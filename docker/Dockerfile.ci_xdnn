@@ -1,0 +1,10 @@
+FROM tvm.ci_cpu_dev
+
+RUN apt-get install graphviz
+
+RUN pip3 install \ 
+	tensorflow==1.8 \
+	numpy==1.4.1 \
+	pydot==1.4.1 \
+	h5py==2.8.0 \
+	jupyter
