@@ -50,6 +50,8 @@ class XDNNController(object):
         self.scaleA = 1
         self.scaleB = 1
         self.PE = 0
+        self.batch_sz = 1
+        self.in_shape = (1,4,4)
         # TODO: batch_sz, in_shape??
 
         self.handles = None
@@ -117,9 +119,9 @@ class XDNNController(object):
             'fromtensorflow': False,
             'weights': "weights", 
             'datadir': self.datadir,
-            #'pngfile': "graph.png",
+            'pngfile': "graph.png",
             'verbose': True,
-            #'quantizecfg': "work/tvm_quantization_params.json", TODO
+            'quantizecfg': "work/tvm_quantization_params.json", #TODO
             'img_mean': [104.007, 116.669, 122.679],
             'calibration_size': 15,
             'bitwidths': [16,16,16],
@@ -128,9 +130,12 @@ class XDNNController(object):
             # FPGA
             'scaleA': self.scaleA,
             'scaleB': self.scaleB,
-            'PE': self.PE
+            'PE': self.PE,
+	    'batch_sz': self.batch_sz,
+	    'in_shape': self.in_shape
             # TODO: batch_sz, in_shape??
         }
+        print("Config: ".format(config))
 
         self.fpga_rt = xdnn_lib.XDNNFPGAOp(handles, config)
 

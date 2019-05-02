@@ -1,10 +1,38 @@
 FROM tvm.ci_cpu_dev
 
-RUN apt-get install graphviz
+RUN apt-get update && apt-get install -y --no-install-recommends\
+	build-essential\
+ 	ca-certificates\
+ 	cmake\
+	rsync\
+	sudo\
+	curl\
+ 	wget\
+ 	git\
+ 	vim\
+ 	graphviz\
+ 	python-dev\
+ 	python-skimage\
+ 	libatlas-base-dev\
+ 	libboost-all-dev\
+ 	libgflags-dev\
+ 	libgoogle-glog-dev\
+ 	libhdf5-serial-dev\
+ 	libleveldb-dev\
+ 	liblmdb-dev\
+ 	libopencv-dev\
+ 	libprotobuf-dev\
+ 	libsnappy-dev\
+ 	protobuf-compiler\
+ 	libyaml-cpp-dev\
+ 	&& rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install \ 
+	six==1.11.0 \
 	tensorflow==1.8 \
-	numpy==1.4.1 \
+	numpy==1.14.3 \
 	pydot==1.4.1 \
 	h5py==2.8.0 \
+	opencv-python \
+	matplotlib \
 	jupyter
