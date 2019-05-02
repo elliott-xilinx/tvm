@@ -10,7 +10,7 @@ import xfdnn.rt.xdnn as xdnn_lib
 class XDNNController(object):
 
     """
-    This singleton class wraps the FPGA backend and controls requests
+    This class wraps the FPGA backend and controls requests
 
     Attributes
     ----------
@@ -21,6 +21,8 @@ class XDNNController(object):
         command file
     """
 
+    # TODO: Singleton class??
+    """
     __instance = None
 
     @classmethod
@@ -28,14 +30,16 @@ class XDNNController(object):
         if XDNNController.__instance is not None:
             return XDNNController.__instance
         return XDNNController()
+    """
 
     def __init__(self, platform, xclbin, memory, dsp, netcfg, datadir, quantizecfg=None):
+        """
         if XDNNController.__instance is not None:
             raise XDNNError("XDNNController is a singleton class and only one"\
                 "instance can be created. Call get_instance to get this instance.")
         else:
             XDNNController.__instance = self
-        
+        """
         self.platform = platform
         self.xclbin = xclbin
         self.memory = memory
@@ -56,7 +60,6 @@ class XDNNController(object):
 
         self.handles = None
         self.fpga_rt = None
-        self.fpga_rt = self.get_fpga_rt()
         self.op_to_lines = {}
     
     def execute_op(self, name, ins, outs):
@@ -65,10 +68,13 @@ class XDNNController(object):
         Execute the operation with the given name and inputs and write result to 
         output data structure
         """
+        if self.fpga_rt is None:
+            raise ValueError("Setup FPGA executer before executing the graph")
         print(ins.shape, type(ins))
         print(ins)
         print(outs.shape, type(outs))
         print(outs)
+        
         self.fpga_rt.execute(ins, outs)
         print("after")
         print(outs)
@@ -97,7 +103,12 @@ class XDNNController(object):
 
     ## GETTERS & SETTERS ##
 
-    def get_fpga_rt(self):
+    def set_fpga_rt(self):
+        # type: () -> None
+        """
+        Setting up the connecion with the FPGA and initializing with the set configs
+        to retrieve a xDNN executer instance
+        """
         if self.fpga_rt is not None:
             return self.fpga_rt
         elif not self.xclbin:
@@ -131,8 +142,8 @@ class XDNNController(object):
             'scaleA': self.scaleA,
             'scaleB': self.scaleB,
             'PE': self.PE,
-	    'batch_sz': self.batch_sz,
-	    'in_shape': self.in_shape
+	        'batch_sz': self.batch_sz,
+	        'in_shape': self.in_shape
             # TODO: batch_sz, in_shape??
         }
         print("Config: ".format(config))

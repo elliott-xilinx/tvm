@@ -115,6 +115,13 @@ class XDNNFrontend(object):
         # TODO: simulator
         self.xdnn_controller.execute_op(name, ins, outs)
 
+    def setup_fpga_executer(self):
+        # type: () -> None
+        """
+        Setting up the connecion with the FPGA and retrieving an xDNN executer instance
+        """
+        self.xdnn_controller.set_fpga_rt()
+
     ## GETTERS & SETTERS ##
     # TODO: checks
 
