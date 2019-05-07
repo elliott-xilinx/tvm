@@ -1,5 +1,6 @@
 """xDNN IP controller class"""
 
+import time
 import json
 import os.path
 
@@ -114,41 +115,53 @@ class XDNNController(object):
         elif not self.xclbin:
             raise XDNNError("Specify xclbin file by initizialing before creating"\
                 " an FPGA handle")
-        
+        print("Create handle")        
         ret, handles = xdnn_lib.createHandle(self.xclbin)
-
+        print("after create handle")
+        #ret = False
         if ret:                                                         
             print("ERROR: Unable to create handle to FPGA")
         else:
             print("INFO: Successfully created handle to FPGA")
-
-        config = {
-            'networkfile': 'None',
-            'memory': self.memory,
-            'dsp': self.dsp,
-            'netcfg': self.netcfg,
-            'fromtensorflow': False,
-            'weights': "weights", 
-            'datadir': self.datadir,
-            'pngfile': "graph.png",
-            'verbose': True,
-            'quantizecfg': "work/tvm_quantization_params.json", #TODO
-            'img_mean': [104.007, 116.669, 122.679],
-            'calibration_size': 15,
-            'bitwidths': [16,16,16],
-            'img_raw_scale': 255.0,
-            'img_input_scale': 1.0,
-            # FPGA
-            'scaleA': self.scaleA,
-            'scaleB': self.scaleB,
-            'PE': self.PE,
+            print("test")
+            
+            config = {
+                #'xclbin': self.xclbin,
+                #'platform':self.platform,
+                #'networkfile': 'None',
+                'memory': self.memory,
+                'dsp': self.dsp,
+                'netcfg': self.netcfg[:-5], # TODO: remove .json ??
+                #'fromtensorflow': False,
+                'weights': "weights", 
+                'datadir': self.datadir,
+                'pngfile': "graph.png",
+                'verbose': True,
+                'quantizecfg': "", #"work/tvm_quantization_params.json", #TODO
+                'img_mean': [100],
+                'calibration_size': 15,
+                'bitwidths': [16,16,16],
+                'img_raw_scale': 255.0,
+                'img_input_scale': 1.0,
+                # FPGA
+                'scaleA': self.scaleA,
+                'scaleB': self.scaleB,
+                'PE': self.PE,
 	        'batch_sz': self.batch_sz,
 	        'in_shape': self.in_shape
-            # TODO: batch_sz, in_shape??
-        }
-        print("Config: ".format(config))
-
-        self.fpga_rt = xdnn_lib.XDNNFPGAOp(handles, config)
+                # TODO: batch_sz, in_shape??
+            }
+            #config2 = {'networkfile': 'None', 'memory': 5, 'dsp': 56, 'netcfg': 'work/tvm_fpga.cmds', 'fromtensorflow': False, 'weights': 'weights', 'datadir': 'work/weights_data', 'pngfile': 'graph.png', 'verbose': True, 'img_mean': [100], 'quantizecfg': 'work/tvm_quantization_params.json', 'calibration_size': 15, 'bitwidths': [16, 16, 16], 'img_raw_scale': 255.0, 'img_input_scale': 1.0, 'platform': 'alveo-u200', 'xclbin': '../overlaybins/alveo-u200/overlay_3.xclbin', 'scaleA': 1, 'scaleB': 1, 'PE': 0, 'batch_sz': 1, 'in_shape': (1, 4, 4)}
+            #print(handles)
+            print(config)
+            #print(config2)
+            #for key in config2.keys():
+            #    if config[key] != config2[key]:
+            #        print("Difference")
+            #        print("c1: {}".format(config[key]))
+            #        print("c2: {}".format(config2[key]))
+            #time.sleep(10)
+            self.fpga_rt = xdnn_lib.XDNNFPGAOp(handles, config)
 
 
     def get_netcfg_json(self):
