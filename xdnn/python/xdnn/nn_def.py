@@ -5,6 +5,86 @@ import nnvm
 
 from xdnn import XDNNError, xdnn_frontend
 
+## CONVOLUTION ##
+
+def compute_conv2d(attrs, inputs, outputs):
+    """Compute definition of conv2d
+    
+    Parameters
+    ----------
+    attrs : nnvm.top.attr_dict.AttrDict
+        dictionary of operation attributes 
+
+    inputs : List[tvm.Tensor]
+        list of operation input tensors
+
+    outputs : List[tvm.Tensor]
+        list of operation output tensor placeholders
+
+    Returns
+    -------
+    out : tvm.Tensor
+        the output tensor
+    """
+    
+    op = 'conv2d'
+    name = 'conv2d0'
+    attrs_dict = { k: attrs[k] for k in attrs.keys() }
+    input_names = [inpt.op.name for inpt in inputs]
+    print(input_names)
+    in_shapes = [[int(i) for i in inpt.shape] for inpt in inputs]
+    out_shapes = [[int(i) for i in outputs[0].shape]]
+    shapes = in_shapes + out_shapes
+    layout = attrs_dict['layout']
+    params = {}
+
+    xdnn_frontend.check_initialized()
+    xdnn_frontend.compile(op, name, attrs_dict, input_names, shapes, layout, params)
+    
+    # TODO: check that we can execute this conv layer on fpga, otherwise return topi definition
+
+    I, O = inputs[0], outputs[0] 
+    # Construct TVM external function call for computing 2d convolution on FPGA
+    out = tvm.extern(O.shape, [I], lambda ins, outs: tvm.call_packed(
+        'tvm.xdnn.conv2d', ins[0], outs[0], name
+        ), name=name)
+    
+    # TODO: checks, layout
+    # out = topi.nn.pool(inputs[0], kernel, stride, padding, 
+    #                    pool_type='max', layout=layout)
+
+    print("conv2d out: {}".format(out))
+    print(out.shape)
+    return out
+
+# level should be higher than 10 to override nnvm max_pool2d computation definition
+nnvm.top.register_compute('conv2d', compute_conv2d, level=15) 
+
+def schedule_conv2d(attrs, outputs, target):
+    """Schedule definition of conv2d
+    
+    Parameters
+    ----------
+    attrs : dict
+        dictionary of operation attributes 
+
+    outputs : List[tvm.Tensor]
+        list of operation output tensor placeholders
+
+    target: str
+        the target device identifier
+
+    Returns
+    -------
+    s : tvm.Schedule
+        the operation schedule
+    """
+    return tvm.create_schedule([x.op for x in outputs])
+
+nnvm.top.register_schedule('conv2d', schedule_conv2d, level=15)
+
+## POOLING ##
+
 def compute_max_pool2d(attrs, inputs, outputs):
     """Compute definition of max_pool2d
     
@@ -31,6 +111,7 @@ def compute_max_pool2d(attrs, inputs, outputs):
     name = 'max_pool2d0'
     attrs_dict = { k: attrs[k] for k in attrs.keys() }
     input_names = [inpt.op.name for inpt in inputs]
+    print(input_names)
     in_shapes = [[int(i) for i in inpt.shape] for inpt in inputs]
     out_shapes = [[int(i) for i in outputs[0].shape]]
     shapes = in_shapes + out_shapes
@@ -61,6 +142,8 @@ def compute_max_pool2d(attrs, inputs, outputs):
 
     pad_t, pad_l, pad_b, pad_r = padding
     """
+    # TODO: check that we can execute this maxpool layer on fpga, otherwise return topi definition
+
     I, O = inputs[0], outputs[0] 
     # Construct TVM external function call for computing 2d max pool on FPGA
     out = tvm.extern(O.shape, [I], lambda ins, outs: tvm.call_packed(

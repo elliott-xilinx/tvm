@@ -96,7 +96,7 @@ class XDNNFrontend(object):
             inputs, shapes, layout, params)
 
         print(type(fpga_code_json))
-        print("Compiled json code: {}".format(fpga_code_json))
+        #print("Compiled json code: {}".format(fpga_code_json))
         
         self.xdnn_controller.add_operation(name, fpga_code_json)
         
