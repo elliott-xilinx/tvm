@@ -64,7 +64,6 @@ class XDNNController(object):
             os.remove(self.netcfg)
         self.params_loc = params_loc
         self.quantizecfg = quantizecfg
-
         # TODO: allow custom values
         self.scaleA = scaleA
         self.scaleB = scaleB
@@ -145,7 +144,11 @@ class XDNNController(object):
         elif not self.xclbin:
             raise XDNNError("Specify xclbin file by initizialing before creating"\
                 " an FPGA handle")
-
+        if not os.path.isfile(self.params_loc):
+            print("WARNING parameters location does not exist when setting up fpga"\
+                  " configuration")
+            self.params_loc = ""
+        
         args_dict = {
                 'xclbin': self.xclbin,
                 'netcfg': self.netcfg,
@@ -171,7 +174,7 @@ class XDNNController(object):
         else:
             print("INFO: Successfully created handle to FPGA")
             
-            self.fpga_rt = xdnn_lib.XDNNFPGAOp(handles, config)
+            self.fpga_rt = xdnn_lib.XDNNFPGAOp(handles, args)
             self.fpga_input = fpga_rt.getInputs()
             self.fpga_output = fpga_rt.getOutputs()
 
