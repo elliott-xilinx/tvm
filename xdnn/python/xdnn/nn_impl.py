@@ -59,10 +59,10 @@ def xdnn_max_pool2d(inpt,
     print(out, type(out), out.shape)
     #res = np.reshape(np.array([[5,7],[9,4]], dtype=np.float32), (1,1,2,2))
     
-    fpga_output = np.empty(out.shape, dtype=np.float32, order='C')
-    print(fpga_output)
+    #fpga_output = np.empty(out.shape, dtype=np.float32, order='C')
+    #print(fpga_output)
 
-    xdnn_frontend.execute(name, inpt.asnumpy(), fpga_output)
+    xdnn_frontend.execute(name, inpt.asnumpy())
 
     print("fpga out")
     print(fpga_output)

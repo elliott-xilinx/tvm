@@ -30,6 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends\
  	libyaml-cpp-dev\
  	libopenblas-dev
 
+RUN apt-get install -y libturbojpeg lsb-core gdb
+
 RUN pip install --upgrade pip
 RUN pip3 install --no-cache-dir\ 
 	six==1.11.0 \
@@ -42,8 +44,9 @@ RUN pip3 install --no-cache-dir\
 	opencv-python==3.4.2.17 \
 	matplotlib \
 	jupyter \
-	ck
+	ck \
+	PyTurboJPEG
 
-RUN apt-get install -y libturbojpeg lsb-core gdb
+
 
 

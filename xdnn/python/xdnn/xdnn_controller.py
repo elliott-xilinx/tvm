@@ -7,6 +7,19 @@ import os.path
 from xdnn import XDNNError
 
 import xfdnn.rt.xdnn as xdnn_lib
+import xfdnn.rt.xdnn_io as xdnn_io
+
+# TODO: move
+class XDNNOp(object):
+
+    """
+    """
+
+    def __init__(self, netcfg_json):
+        # type: (dict) -> XDNNOp
+        inputs = netcfg_json['inputs']
+        self.input_names = [inpt['input_name'] for inpt in inputs]
+
 
 class XDNNController(object):
 
@@ -33,7 +46,8 @@ class XDNNController(object):
         return XDNNController()
     """
 
-    def __init__(self, platform, xclbin, memory, dsp, netcfg, datadir, quantizecfg=None):
+    def __init__(self, platform, xclbin, netcfg, params_loc, input_shape, 
+            quantizecfg=None, scaleA=1, scaleB=1, PE=0):
         """
         if XDNNController.__instance is not None:
             raise XDNNError("XDNNController is a singleton class and only one"\
@@ -43,27 +57,32 @@ class XDNNController(object):
         """
         self.platform = platform
         self.xclbin = xclbin
-        self.memory = memory
-        self.dsp = dsp
+        #self.memory = memory
+        #self.dsp = dsp
         self.netcfg = netcfg
         if os.path.isfile(self.netcfg):
             os.remove(self.netcfg)
-        self.datadir = datadir
+        self.params_loc = params_loc
         self.quantizecfg = quantizecfg
 
         # TODO: allow custom values
-        self.scaleA = 1
-        self.scaleB = 1
-        self.PE = 0
-        self.batch_sz = 1
-        self.in_shape = (1,4,4)
+        self.scaleA = scaleA
+        self.scaleB = scaleB
+        self.PE = PE
+        self.input_shape = input_shape
+        #self.batch_sz = 1
+        #self.in_shape = (1,4,4)
         # TODO: batch_sz, in_shape??
+
+        self.ops = {}
+        self.op_to_lines = {}
 
         self.handles = None
         self.fpga_rt = None
-        self.op_to_lines = {}
+        self.fpga_input = {}
+        self.fpga_output = {}
     
-    def execute_op(self, name, ins, outs):
+    def execute_op(self, name, ins):
         # (str) -> None
         """
         Execute the operation with the given name and inputs and write result to 
@@ -73,12 +92,19 @@ class XDNNController(object):
             raise ValueError("Setup FPGA executer before executing the graph")
         print(ins.shape, type(ins))
         print(ins)
-        print(outs.shape, type(outs))
-        print(outs)
+        #print(outs.shape, type(outs))
+        #print(outs)
+        # TODO:
+        xdnn_op = self.ops[name]
+        input_name = xdnn_op.input_names[0]
+        self.fpga_input[input_name] = ins
         
-        self.fpga_rt.execute(ins, outs)
+        self.fpga_rt.execute(self.fpga_input, self.fpga_output)
         print("after")
-        print(outs)
+        print(self.fpga_output)
+
+        return self.fpga_output[name]
+
 
     def add_operation(self, op_name, netcfg_json, quant_params=[]):
         # (str, str, List[dict]) -> None
@@ -87,6 +113,10 @@ class XDNNController(object):
         line numbers in command file and add quant params to quantization 
         parameters file 
         """
+        print("Add operation: {}".format(op_name))
+        xdnn_op = XDNNOp(netcfg_json)
+        self._add_op(op_name, xdnn_op)
+
         base_netcfg_json = self.get_netcfg_json()
         if base_netcfg_json is None:
             self.set_netcfg_json(netcfg_json)
@@ -115,54 +145,46 @@ class XDNNController(object):
         elif not self.xclbin:
             raise XDNNError("Specify xclbin file by initizialing before creating"\
                 " an FPGA handle")
+
+        args_dict = {
+                'xclbin': self.xclbin,
+                'netcfg': self.netcfg,
+                'quantizecfg': self.quantizecfg,
+                'weights': self.params_loc,
+                'scaleA': self.scaleA,
+                'scaleB': self.scaleB,
+                'PE': self.PE,
+                'batch_sz': self.input_shape[0],
+                'inshape': tuple(self.input_shape[1:])
+            }
+        args = xdnn_io.make_dict_args(args_dict)
+        print("Set_fpga_rt: args: {}".format(args))
+
         print("Create handle")        
         ret, handles = xdnn_lib.createHandle(self.xclbin)
         print("after create handle")
         #ret = False
         if ret:                                                         
             print("ERROR: Unable to create handle to FPGA")
+
+            # TODO: simulator
         else:
             print("INFO: Successfully created handle to FPGA")
-            print("test")
             
-            config = {
-                #'xclbin': self.xclbin,
-                #'platform':self.platform,
-                #'networkfile': 'None',
-                'memory': self.memory,
-                'dsp': self.dsp,
-                'netcfg': self.netcfg[:-5], # TODO: remove .json ??
-                #'fromtensorflow': False,
-                'weights': "weights", 
-                'datadir': self.datadir,
-                'pngfile': "graph.png",
-                'verbose': True,
-                'quantizecfg': "", #"work/tvm_quantization_params.json", #TODO
-                'img_mean': [100],
-                'calibration_size': 15,
-                'bitwidths': [16,16,16],
-                'img_raw_scale': 255.0,
-                'img_input_scale': 1.0,
-                # FPGA
-                'scaleA': self.scaleA,
-                'scaleB': self.scaleB,
-                'PE': self.PE,
-	        'batch_sz': self.batch_sz,
-	        'in_shape': self.in_shape
-                # TODO: batch_sz, in_shape??
-            }
-            #config2 = {'networkfile': 'None', 'memory': 5, 'dsp': 56, 'netcfg': 'work/tvm_fpga.cmds', 'fromtensorflow': False, 'weights': 'weights', 'datadir': 'work/weights_data', 'pngfile': 'graph.png', 'verbose': True, 'img_mean': [100], 'quantizecfg': 'work/tvm_quantization_params.json', 'calibration_size': 15, 'bitwidths': [16, 16, 16], 'img_raw_scale': 255.0, 'img_input_scale': 1.0, 'platform': 'alveo-u200', 'xclbin': '../overlaybins/alveo-u200/overlay_3.xclbin', 'scaleA': 1, 'scaleB': 1, 'PE': 0, 'batch_sz': 1, 'in_shape': (1, 4, 4)}
-            #print(handles)
-            print(config)
-            #print(config2)
-            #for key in config2.keys():
-            #    if config[key] != config2[key]:
-            #        print("Difference")
-            #        print("c1: {}".format(config[key]))
-            #        print("c2: {}".format(config2[key]))
-            #time.sleep(10)
             self.fpga_rt = xdnn_lib.XDNNFPGAOp(handles, config)
+            self.fpga_input = fpga_rt.getInputs()
+            self.fpga_output = fpga_rt.getOutputs()
 
+
+    ## HELPER METHODS ##
+
+    def _add_op(self, op_name, xdnn_op):
+        # type: (str, XDNNOp) -> None
+        # TODO: make a class
+        if op_name in self.ops:
+            raise XDNNError("Operation with name: {} already exists, "\
+                "duplicate error".format(op_name))
+        self.ops[op_name] = xdnn_op
 
     def get_netcfg_json(self):
         # Load existing json from netcfg file

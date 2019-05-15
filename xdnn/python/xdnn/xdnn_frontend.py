@@ -1,5 +1,7 @@
 """xDNN frontend class"""
 
+import os
+
 from xdnn import XDNNError
 from xdnn.xdnn_controller import XDNNController
 
@@ -19,13 +21,28 @@ class XDNNFrontend(object):
         self.memory = None
         self.dsp = None
         self.netcfg = None
-        self.weightsdir_name = None
+        self.weights_name = None
         self.quantizecfg = None
         self.pngfile = None
         self.verbose = False
 
+        # TODO: adjustable?
+        self.bytesperpixels = 1
+        # Setting for xfdnn compiler
+        self.cpulayermustgo = True
+
+        # xdnn controller
+        # TODO: adjustable?
+        self.scaleA = 1
+        self.scaleB = 1
+        self.PE = 0
+        self.input_shape = None
+
         self.tvm_compiler = None
         self.xdnn_controller = None
+
+        if not os.path.isdir("work"):
+            os.makedirs("work")
 
     def check_initialized(self):
         # () -> bool
@@ -48,17 +65,19 @@ class XDNNFrontend(object):
                     self.set_dsp(value)
                 elif key == 'netcfg':
                     self.set_netcfg(value)
-                elif key == 'weightsdir_name':
-                    self.set_weightsdir_name(value)
+                elif key == 'weights_name':
+                    self.set_weights(value)
                 elif key == 'quantizecfg':
                     self.set_quantizecfg(value)
+                elif key == 'input_shape':
+                    self.set_input_shape(value)
                 elif key == 'pngfile':
                     self.set_pngfile(value)
                 elif key == 'verbose':
                     self.verbose = value
 
         if self.platform != None and self.xclbin != None and self.memory != None\
-            and self.dsp != None and self.netcfg != None and self.weightsdir_name != None:
+            and self.dsp != None and self.netcfg != None and self.weights_name != None:
             
             self.tvm_compiler = TVMFrontend(
                 networkfile="None",
@@ -66,9 +85,11 @@ class XDNNFrontend(object):
                 dsp=self.dsp,
                 # Because tvm compiler will write FPGA code json to this file,
                 # but we will construct or own file: netcfg attribute
-                generatefile= "temp_fpga_code.cmds", 
+                generatefile="work/tmp_tvm_compiler", 
                 fromtensorflow=False,
-                weights=self.weightsdir_name,
+                weights=self.weights_name,
+                bytesperpixels=self.bytesperpixels,
+                cpulayermustgo=self.cpulayermustgo,
                 pngfile=self.pngfile,
                 verbose=self.verbose
             )
@@ -76,11 +97,14 @@ class XDNNFrontend(object):
             self.xdnn_controller = XDNNController(
                 platform=self.platform,
                 xclbin=self.xclbin,
-                memory=self.memory,
-                dsp=self.dsp,
                 netcfg=self.netcfg,
-                datadir="work/" + self.weightsdir_name + "_data",
-                quantizecfg=self.quantizecfg
+                params_loc="work/" + self.weights_name + "_data.h5",
+                input_shape =self.input_shape,
+                quantizecfg=self.quantizecfg,
+                scaleA=self.scaleA,
+                scaleB=self.scaleB,
+                PE=self.PE
+                # TODO: batch_sz, inshape
             )
         else:
             raise XDNNError("One of following mandatory arguments is missing:"\
@@ -113,7 +137,7 @@ class XDNNFrontend(object):
         output data structure
         """
         # TODO: simulator
-        self.xdnn_controller.execute_op(name, ins, outs)
+        return self.xdnn_controller.execute_op(name, ins)
 
     def setup_fpga_executer(self):
         # type: () -> None
@@ -147,13 +171,22 @@ class XDNNFrontend(object):
             raise XDNNError("Invalid netcfg file, file name should end with .json")
         self.netcfg = netcfg
 
-    def set_weightsdir_name(self, weightsdir_name):
+    def set_weights(self, weights):
         # type: (str) -> None
-        self.weightsdir_name = weightsdir_name
+        # TODO: this if part of the file name: 'weights' input gets transformed later 
+        #   to 'work/weights_data.h5
+        self.weights_name = weights
 
     def set_quantizecfg(self, quantizecfg):
         # type: (str) -> None
         self.quantizecfg = quantizecfg
+
+    def set_input_shape(self, input_shape):
+        # type: (tuple/list) -> None
+        if not isinstance(input_shape, (list,tuple)):
+            raise XDNNError("Invalid input shape argument for xdnn frontend"\
+                ", should be list or tuple, not:{}".format(type(input_shape)))
+        self.input_shape = list(input_shape)
 
     def set_pngfile(self, pngfile):
         # type: (str) -> None
