@@ -15,8 +15,9 @@ class XDNNOp(object):
     """
     """
 
-    def __init__(self, netcfg_json):
-        # type: (dict) -> XDNNOp
+    def __init__(self, name, netcfg_json):
+        # type: (str, dict) -> XDNNOp
+        self.name = name
         inputs = netcfg_json['inputs']
         self.input_names = [inpt['input_name'] for inpt in inputs]
 
@@ -81,8 +82,8 @@ class XDNNController(object):
         self.fpga_input = {}
         self.fpga_output = {}
     
-    def execute_op(self, name, ins):
-        # (str) -> None
+    def execute_op(self, op_id, ins):
+        # (int, numpy.ndarray) -> None
         """
         Execute the operation with the given name and inputs and write result to 
         output data structure
@@ -91,30 +92,35 @@ class XDNNController(object):
             raise ValueError("Setup FPGA executer before executing the graph")
         print(ins.shape, type(ins))
         print(ins)
+        print(op_id)
+        print(self.ops)
         #print(outs.shape, type(outs))
         #print(outs)
         # TODO:
-        xdnn_op = self.ops[name]
+        xdnn_op = self.ops[op_id]
         input_name = xdnn_op.input_names[0]
+        print(input_name)
         self.fpga_input[input_name] = ins
-        
+        print(self.fpga_input)
+        print(self.fpga_output)
         self.fpga_rt.execute(self.fpga_input, self.fpga_output)
         print("after")
         print(self.fpga_output)
 
-        return self.fpga_output[name]
+        return self.fpga_output[xdnn_op.name]
 
 
-    def add_operation(self, op_name, netcfg_json, quant_params=[]):
-        # (str, str, List[dict]) -> None
+    def add_operation(self, op_id, op_name, netcfg_json, quant_params=[]):
+        # (int, str, str, List[dict]) -> None
         """
         Add an operation code to command file, map operation name to start/end
         line numbers in command file and add quant params to quantization 
         parameters file 
         """
-        print("Add operation: {}".format(op_name))
-        xdnn_op = XDNNOp(netcfg_json)
-        self._add_op(op_name, xdnn_op)
+        print("Add operation: {}".format(op_id))
+        xdnn_op = XDNNOp(op_name, netcfg_json)
+
+        self._add_op(op_id, xdnn_op)
 
         base_netcfg_json = self.get_netcfg_json()
         if base_netcfg_json is None:
@@ -175,19 +181,19 @@ class XDNNController(object):
             print("INFO: Successfully created handle to FPGA")
             
             self.fpga_rt = xdnn_lib.XDNNFPGAOp(handles, args)
-            self.fpga_input = fpga_rt.getInputs()
-            self.fpga_output = fpga_rt.getOutputs()
+            self.fpga_input = self.fpga_rt.getInputs()
+            self.fpga_output = self.fpga_rt.getOutputs()
 
 
     ## HELPER METHODS ##
 
-    def _add_op(self, op_name, xdnn_op):
+    def _add_op(self, op_id, xdnn_op):
         # type: (str, XDNNOp) -> None
         # TODO: make a class
-        if op_name in self.ops:
-            raise XDNNError("Operation with name: {} already exists, "\
-                "duplicate error".format(op_name))
-        self.ops[op_name] = xdnn_op
+        if op_id in self.ops:
+            raise XDNNError("Operation with id: {} already exists, "\
+                "duplicate error".format(op_id))
+        self.ops[op_id] = xdnn_op
 
     def get_netcfg_json(self):
         # Load existing json from netcfg file

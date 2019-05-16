@@ -109,6 +109,7 @@ def compute_max_pool2d(attrs, inputs, outputs):
     
     op = 'max_pool2d'
     name = 'max_pool2d0'
+    op_id = 0
     attrs_dict = { k: attrs[k] for k in attrs.keys() }
     input_names = [inpt.op.name for inpt in inputs]
     print(input_names)
@@ -119,7 +120,7 @@ def compute_max_pool2d(attrs, inputs, outputs):
     params = {}
 
     xdnn_frontend.check_initialized()
-    xdnn_frontend.compile(op, name, attrs_dict, input_names, shapes, layout, params)
+    xdnn_frontend.compile(op, op_id, name, attrs_dict, input_names, shapes, layout, params)
     
     """
     kernel_h, kernel_w = attrs.get_int_tuple("pool_size")
@@ -146,8 +147,9 @@ def compute_max_pool2d(attrs, inputs, outputs):
 
     I, O = inputs[0], outputs[0] 
     # Construct TVM external function call for computing 2d max pool on FPGA
+    print("name: {}".format(name))
     out = tvm.extern(O.shape, [I], lambda ins, outs: tvm.call_packed(
-        'tvm.xdnn.max_pool2d', ins[0], outs[0], name
+        'tvm.xdnn.max_pool2d', ins[0], outs[0], op_id
         # kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l, pad_b, pad_r, ceil_mode, layout
         ), name=name)
     

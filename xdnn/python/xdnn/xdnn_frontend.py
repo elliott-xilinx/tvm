@@ -112,8 +112,8 @@ class XDNNFrontend(object):
 
     ## MAIN METHODS ##
     
-    def compile(self, op, name, attrs, inputs, shapes, layout, params):
-        # type: (str, str, Dict[str, str], List[str], List[List[int]], str,
+    def compile(self, op, op_id, name, attrs, inputs, shapes, layout, params):
+        # type: (str, int, str, Dict[str, str], List[str], List[List[int]], str,
         #    Dict[str,tvm.ndarray.NDArray]) -> json
 
         fpga_code_json = self.tvm_compiler.compile_op(op, name, attrs, 
@@ -122,7 +122,7 @@ class XDNNFrontend(object):
         print(type(fpga_code_json))
         #print("Compiled json code: {}".format(fpga_code_json))
         
-        self.xdnn_controller.add_operation(name, fpga_code_json)
+        self.xdnn_controller.add_operation(op_id, name, fpga_code_json)
         
         return "SUCCESS"
 
@@ -130,7 +130,7 @@ class XDNNFrontend(object):
         # TODO: how/where to do quantization
         raise NotImplementedError("")
 
-    def execute(self, name, ins, outs):
+    def execute(self, name, ins):
         # (str) -> None
         """
         Execute the operation with the given name and inputs and write result to 
