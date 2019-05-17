@@ -70,10 +70,8 @@ class XDNNController(object):
         self.scaleB = scaleB
         self.PE = PE
         self.input_shape = input_shape
-        #self.batch_sz = 1
-        #self.in_shape = (1,4,4)
-        # TODO: batch_sz, in_shape??
 
+        self.op_idx = 0
         self.ops = {}
         self.op_to_lines = {}
 
@@ -83,35 +81,29 @@ class XDNNController(object):
         self.fpga_output = {}
     
     def execute_op(self, op_id, ins):
-        # (int, numpy.ndarray) -> None
+        # type: (int, numpy.ndarray) -> numpy.ndarray
         """
-        Execute the operation with the given name and inputs and write result to 
-        output data structure
+        Execute the operation with the given name and inputs and return the result
         """
         if self.fpga_rt is None:
             raise ValueError("Setup FPGA executer before executing the graph")
-        print(ins.shape, type(ins))
-        print(ins)
-        print(op_id)
-        print(self.ops)
-        #print(outs.shape, type(outs))
-        #print(outs)
-        # TODO:
+
         xdnn_op = self.ops[op_id]
         input_name = xdnn_op.input_names[0]
-        print(input_name)
+        print("Execute op id: {}, name: {}, ins shape: {}".format(op_id, xdnn_op.name, ins.shape))
+
         self.fpga_input[input_name] = ins
-        print(self.fpga_input)
-        print(self.fpga_output)
+        
+        print("FPGA input: {}".format(self.fpga_input))
+        print("FPGA output before: {}".format(self.fpga_output))
         self.fpga_rt.execute(self.fpga_input, self.fpga_output)
-        print("after")
-        print(self.fpga_output)
+        print("FPGA output after: {}".format(self.fpga_output))
 
         return self.fpga_output[xdnn_op.name]
 
 
     def add_operation(self, op_id, op_name, netcfg_json, quant_params=[]):
-        # (int, str, str, List[dict]) -> None
+        # type: (int, str, str, List[dict]) -> None
         """
         Add an operation code to command file, map operation name to start/end
         line numbers in command file and add quant params to quantization 
@@ -168,10 +160,9 @@ class XDNNController(object):
             }
         args = xdnn_io.make_dict_args(args_dict)
         print("Set_fpga_rt: args: {}".format(args))
-
-        print("Create handle")        
+               
         ret, handles = xdnn_lib.createHandle(self.xclbin)
-        print("after create handle")
+
         #ret = False
         if ret:                                                         
             print("ERROR: Unable to create handle to FPGA")
@@ -194,6 +185,11 @@ class XDNNController(object):
             raise XDNNError("Operation with id: {} already exists, "\
                 "duplicate error".format(op_id))
         self.ops[op_id] = xdnn_op
+        self.op_idx += 1
+
+    def get_new_op_id(self):
+        # type: () -> int
+        return self.op_idx
 
     def get_netcfg_json(self):
         # Load existing json from netcfg file

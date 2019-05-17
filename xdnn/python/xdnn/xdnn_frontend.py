@@ -118,9 +118,6 @@ class XDNNFrontend(object):
 
         fpga_code_json = self.tvm_compiler.compile_op(op, name, attrs, 
             inputs, shapes, layout, params)
-
-        print(type(fpga_code_json))
-        #print("Compiled json code: {}".format(fpga_code_json))
         
         self.xdnn_controller.add_operation(op_id, name, fpga_code_json)
         
@@ -148,6 +145,10 @@ class XDNNFrontend(object):
 
     ## GETTERS & SETTERS ##
     # TODO: checks
+
+    def get_new_op_id(self):
+        # type: () -> int
+        return self.xdnn_controller.get_new_op_id()        
 
     def set_platform(self, platform):
         # type: (str) -> None

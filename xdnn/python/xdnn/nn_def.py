@@ -27,8 +27,9 @@ def compute_conv2d(attrs, inputs, outputs):
         the output tensor
     """
     
+    op_id = xdnn_frontend.get_new_op_id()
     op = 'conv2d'
-    name = 'conv2d0'
+    name = str(op_id) + "_" + op
     attrs_dict = { k: attrs[k] for k in attrs.keys() }
     input_names = [inpt.op.name for inpt in inputs]
     print(input_names)
@@ -40,8 +41,6 @@ def compute_conv2d(attrs, inputs, outputs):
 
     xdnn_frontend.check_initialized()
     xdnn_frontend.compile(op, name, attrs_dict, input_names, shapes, layout, params)
-    
-    # TODO: check that we can execute this conv layer on fpga, otherwise return topi definition
 
     I, O = inputs[0], outputs[0] 
     # Construct TVM external function call for computing 2d convolution on FPGA
@@ -53,8 +52,7 @@ def compute_conv2d(attrs, inputs, outputs):
     # out = topi.nn.pool(inputs[0], kernel, stride, padding, 
     #                    pool_type='max', layout=layout)
 
-    print("conv2d out: {}".format(out))
-    print(out.shape)
+    print("Conv2d: {} , out shape: {}".format(name, out.shape))
     return out
 
 # level should be higher than 10 to override nnvm max_pool2d computation definition
@@ -107,9 +105,10 @@ def compute_max_pool2d(attrs, inputs, outputs):
 
     print(type(attrs))
     
+    op_id = xdnn_frontend.get_new_op_id()
     op = 'max_pool2d'
-    name = 'max_pool2d0'
-    op_id = 0
+    name = str(op_id) + "_" + op 
+    
     attrs_dict = { k: attrs[k] for k in attrs.keys() }
     input_names = [inpt.op.name for inpt in inputs]
     print(input_names)
@@ -121,44 +120,19 @@ def compute_max_pool2d(attrs, inputs, outputs):
 
     xdnn_frontend.check_initialized()
     xdnn_frontend.compile(op, op_id, name, attrs_dict, input_names, shapes, layout, params)
-    
-    """
-    kernel_h, kernel_w = attrs.get_int_tuple("pool_size")
-    stride_h, stride_w, = attrs.get_int_tuple("strides")
-    padding = attrs.get_int_tuple("padding")
-    layout = attrs['layout']
-    ceil_mode = attrs['ceil_mode']
-    
-    if len(padding) == 1:
-        padding = padding * 4
-    elif len(padding) == 2:
-        padding = (padding[0], padding[1], padding[0], padding[1])
-    elif len(padding) != 4:
-        raise XDNNError("Invalid number of paddings for 2d max pool operation,"\
-            " expected 4 but got: {}".format(len(padding)))
-    
-    if len(inputs) != 1:
-        raise XDNNError("Invalid number of inputs for 2d max pool operation,"\
-            " expected 1 but got: {}".format(len(inputs)))
-
-    pad_t, pad_l, pad_b, pad_r = padding
-    """
-    # TODO: check that we can execute this maxpool layer on fpga, otherwise return topi definition
 
     I, O = inputs[0], outputs[0] 
     # Construct TVM external function call for computing 2d max pool on FPGA
     print("name: {}".format(name))
     out = tvm.extern(O.shape, [I], lambda ins, outs: tvm.call_packed(
         'tvm.xdnn.max_pool2d', ins[0], outs[0], op_id
-        # kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l, pad_b, pad_r, ceil_mode, layout
         ), name=name)
     
     # TODO: checks, layout
     # out = topi.nn.pool(inputs[0], kernel, stride, padding, 
     #                    pool_type='max', layout=layout)
 
-    print("Max pool out: {}".format(out))
-    print(out.shape)
+    print("Max pool: {} , out shape: {}".format(name, out))
     return out
 
 # level should be higher than 10 to override nnvm max_pool2d computation definition
@@ -183,10 +157,6 @@ def schedule_max_pool2d(attrs, outputs, target):
     s : tvm.Schedule
         the operation schedule
     """
-    # layout = attrs['layout']
-    # with tvm.target.create(target):
-    #    return topi.generic.schedule_pool(outs, layout=layout)
-    
     # just use the basic tvm create_schedule function
     # print([x.op for x in outputs])
     return tvm.create_schedule([x.op for x in outputs])
