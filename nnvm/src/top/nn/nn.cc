@@ -746,5 +746,37 @@ NNVM_REGISTER_OP(l2_normalize)
 .set_attr<FCorrectLayout>("FCorrectLayout", ElemwiseArbitraryLayout<1, 1>)
 .set_support_level(1);
 
+DMLC_REGISTER_PARAMETER(XDNNParam);
+
+inline bool XDNNInferShape(const nnvm::NodeAttrs& attrs,
+			   std::vector<TShape>* in_shape,
+			   std::vector<TShape>* out_shape) {
+  TShape dshape = (*in_shape)[0];
+  //TShape oshape = dshape;
+  const XDNNParam& param = nnvm::get<XDNNParam>(attrs.parsed);
+
+  
+  TShape oshape ({param.output_shape[0],
+	param.output_shape[1],
+	param.output_shape[2],
+	param.output_shape[3]});
+
+  //std::cout << param.output_shape;
+
+  NNVM_ASSIGN_OUTPUT_SHAPE(attrs, *out_shape, 0, oshape);
+  return true;
+}
+  
+  NNVM_REGISTER_OP(xdnn)
+  .describe("xdnn OP that runs fused operation using the xdnn runtime")
+  .add_argument("data","4D Tensor", "Input data")
+  //.add_argument("weights","4D Tensor", "Weights")
+  //.add_argument("bias","4D Tensor", "Bias")
+  .set_attr_parser(ParamParser<XDNNParam>)
+  .set_attr<FInferShape>("FInferShape", XDNNInferShape)
+  .set_num_inputs(kVarg)
+  .set_num_outputs(1);
+
+
 }  // namespace top
 }  // namespace nnvm
