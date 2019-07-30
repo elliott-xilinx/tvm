@@ -4,15 +4,16 @@ import nnvm
 import nnvm.symbol as sym
 import os
 
-def fuse(graph, xfuse_inputs, input_list,queue, fuse_list):
+def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count):
 
     # RETURN CONDITION
     if not queue:
         return
     
     nid = queue.pop()
-    fuse_list.append(nid)
     
+    fuse_list.append(nid)
+    count = count + 1
     children = [e[0] for e in graph[nid]["inputs"]]
     #if the nid is not visited then you could queue
     for nid in children:
@@ -24,18 +25,20 @@ def fuse(graph, xfuse_inputs, input_list,queue, fuse_list):
         if node_name in input_list:
             # Don't add the node to trim list
             xfuse_inputs.append(nid)
-        elif node_name in fuse_list:
+        elif nid in fuse_list:
             continue
         else:
             #fuse_list.append(nid)
             queue.append(nid)
 
+    #pdb.set_trace()
+    #print("queue: ",queue)
+    #print("fuse_list: ", fuse_list)
+    fuse(graph,xfuse_inputs,input_list,queue,fuse_list,count)
+    
 
-    fuse(graph,xfuse_inputs,input_list,queue,fuse_list)
 
-
-
-def graph_reconst(json_path, nnvm_graph, output_shape):
+def graph_reconst(json_path, nnvm_graph):
     node_map={}
     xdnn_inputs = []
     
@@ -44,8 +47,11 @@ def graph_reconst(json_path, nnvm_graph, output_shape):
         
     graph_inputs = json_graph["inputs"]
     graph_outputs = json_graph["outputs"]
-
-
+    #pdb.set_trace()
+    compiler_shape_output = json_graph["network"][-1]["outputshapes"]
+    output_shape = (1,compiler_shape_output[2],compiler_shape_output[3],compiler_shape_output[1])    #output_shape = (1,) + tuple(json_graph["network"][-1]["outputshapes"][1:4])
+    #output_shape = (1,1,1001,1)
+    #output_shape = (1,1,1,1001)
     xfuse_inputs=[]
     fuse_list=[]
     queue=[]
@@ -59,9 +65,8 @@ def graph_reconst(json_path, nnvm_graph, output_shape):
             if layer_name == node_name:
                 layer_nid=nid
         assert layer_nid != 0, "The output node was not found"
-                
         queue.append(layer_nid)
-        fuse(nnvm_graph,xfuse_inputs,input_list,queue,fuse_list)
+        fuse(nnvm_graph,xfuse_inputs,input_list,queue,fuse_list,0)
 
     # GRAPH RECONSTRUCTION
     for nid, node in enumerate(nnvm_graph):
@@ -84,22 +89,26 @@ def graph_reconst(json_path, nnvm_graph, output_shape):
                     node_map[nid] = new_entry
         else:
                     
-            if op_name == "null":
+            if op_name == "null": #and nid != 540:
                 new_entry = nnvm.symbol.Variable(node_name)
                 xdnn_inputs.append(new_entry)
             elif op_name in ("__add_scalar__"):
                 children = [node_map[e[0]] for e in node["inputs"]]
                 new_entry = get_clone(*children, op_name, node_name, attrs)
+            else:
+                #TEMP
+                children = [node_map[e[0]] for e in node["inputs"]]
+                new_entry = get_clone(children, op_name, node_name, attrs)
+                #continue
 
+            
+                
             node_map[nid] = new_entry
-
-#    children = [node_map[e[0]] for e in node["inputs"]]
-#                new_entry = get_clone(*children, op_name, node_name, attrs)
-
-#            node_map[nid] = new_entry
 
 
     # assuming the last node is always the output
+    #pdb.set_trace()
     node_map_list = list(node_map.items())
-    return nnvm.graph.create(node_map_list[-1][1])
+    #return nnvm.graph.create(node_map_list[5][1])
+    return nnvm.graph.create(node_map_list[2][1])
     

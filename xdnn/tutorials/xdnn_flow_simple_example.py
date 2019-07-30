@@ -111,7 +111,7 @@ config['weights']=""
 
 # RECONSTRUCT AND FUSE THE GRAPH FOR XDNN
 gidx = compute_graph.index
-graph = graph_reconst(config["netcfg"],gidx.nodes,output_shape)
+graph = graph_reconst(config["netcfg"],gidx.nodes)
 
 
 # COMPILE THE RECONSTRUCTED NNVM GRAPH

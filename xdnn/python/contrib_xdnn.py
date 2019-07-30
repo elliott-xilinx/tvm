@@ -115,6 +115,7 @@ def xdnn_fused(graph_path, out, *ins ):
     #temp = tvm.nd.array(np.zeros(out.shape, dtype=np.float32, order='C'))
     #tvm.nd.array(fpgaOutput['max_pool2d0']).copyto(out)
     key, value  = fpgaOutput.popitem()
+    value = np.reshape(value,out.shape)
     tvm.nd.array(value).copyto(out)
     print(" -- debug: tvm_reg_func done ")
     #temp.copyto(out)
