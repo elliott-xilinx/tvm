@@ -53,7 +53,6 @@ def compute_xdnn(attrs,inputs,outputs):
 def xdnn_fused(graph_path, out, *ins ):
 
     #pdb.set_trace()
-
     path = c_char_p(graph_path.value).value
     # CREATE A HANDLE FOR FPGA COMMUNICATION
     platform = os.environ.get('MLSUITE_PLATFORM')#"alveo-u200"
@@ -62,14 +61,14 @@ def xdnn_fused(graph_path, out, *ins ):
     print("created xdnn manager")
     #ret, handles = xdnn_mgr.createHandle(xclbin, "kernelSxdnn_0")
     ret, handles = xdnn.createHandle(xclbin)
-    
+     
     print("Handle value: %s" % handles[0].value)
     #assert ret==0, print("ERROR: Unable to create handle to FPGA")
     if ret != 0:
         print("ERROR: Unable to create handle to FPGA")
     else:
         print("INFO: Successfully created handle to FPGA")
-
+     
     encoding = 'utf-8'
     args_dict = {
         'xclbin': xclbin,
@@ -82,41 +81,47 @@ def xdnn_fused(graph_path, out, *ins ):
         'batch_sz': ins[0].shape[0],
         'inshape': tuple(ins[0].shape[1:])
     }
-    
+     
     args = xdnn_io.make_dict_args(args_dict)
     print(args)
-
+     
     fpgaRT = xdnn.XDNNFPGAOp(handles,args)
-
+     
     fpgaInput = fpgaRT.getInputs()
     fpgaOutput = fpgaRT.getOutputs()
     print(fpgaInput)
     print(fpgaOutput)
-
+     
     batch_array = np.empty(((ins[0].shape[0],) + tuple(ins[0].shape[1:])), dtype=np.float32, order='C')
     data_paths = [ins[0].asnumpy()]
-
+     
     for i in range(0, len(data_paths), ins[0].shape[0]):
         for j, d in enumerate(data_paths[i:i + ins[0].shape[0]]):
             batch_array[j, ...] = d
             
     print(batch_array)
+     
 
-    # TEMP IS THIS NECESSARY?
-    #fpgaInput[input_names[0]] = batch_array
+    fpgaInput["Placeholder"] = batch_array
     print(fpgaInput)
-
-    # Write FPGA Instructions to FPGA and Execute the network!
+     
+    # WRITE FPGA INSTRUCTIONS TO FPGA AND EXECUTE THE NETWORK!
     print(fpgaOutput)
     fpgaRT.execute(fpgaInput, fpgaOutput)
-    print(fpgaOutput)
-
-    
+     
+     
+    #np.set_printoptions(threshold=np.nan)
+    #print(fpgaOutput)
+     
+    #pdb.set_trace()
     #temp = tvm.nd.array(np.zeros(out.shape, dtype=np.float32, order='C'))
     #tvm.nd.array(fpgaOutput['max_pool2d0']).copyto(out)
     key, value  = fpgaOutput.popitem()
-    value = np.reshape(value,out.shape)
+    value = np.transpose(value,(0,2,3,1))
     tvm.nd.array(value).copyto(out)
+     
     print(" -- debug: tvm_reg_func done ")
     #temp.copyto(out)
-    
+
+    #value = np.transpose(ins[0].asnumpy(),(0,2,3,1))
+    #tvm.nd.array(value).copyto(out)

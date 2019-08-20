@@ -31,27 +31,24 @@ def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count):
             #fuse_list.append(nid)
             queue.append(nid)
 
-    #pdb.set_trace()
-    #print("queue: ",queue)
-    #print("fuse_list: ", fuse_list)
+
     fuse(graph,xfuse_inputs,input_list,queue,fuse_list,count)
     
 
 
-def graph_reconst(json_path, nnvm_graph):
+def graph_reconst(json_path, nnvm_graph, output_layers=None): 
     node_map={}
     xdnn_inputs = []
-    
+
     with open(json_path) as json_file:
         json_graph = json.load(json_file)
         
     graph_inputs = json_graph["inputs"]
     graph_outputs = json_graph["outputs"]
+    graph_outputs = json_graph["outputs"]
     #pdb.set_trace()
     compiler_shape_output = json_graph["network"][-1]["outputshapes"]
-    output_shape = (1,compiler_shape_output[2],compiler_shape_output[3],compiler_shape_output[1])    #output_shape = (1,) + tuple(json_graph["network"][-1]["outputshapes"][1:4])
-    #output_shape = (1,1,1001,1)
-    #output_shape = (1,1,1,1001)
+    output_shape = (1,compiler_shape_output[2],compiler_shape_output[3],compiler_shape_output[1])   
     xfuse_inputs=[]
     fuse_list=[]
     queue=[]
@@ -92,23 +89,23 @@ def graph_reconst(json_path, nnvm_graph):
             if op_name == "null": #and nid != 540:
                 new_entry = nnvm.symbol.Variable(node_name)
                 xdnn_inputs.append(new_entry)
-            elif op_name in ("__add_scalar__"):
-                children = [node_map[e[0]] for e in node["inputs"]]
-                new_entry = get_clone(*children, op_name, node_name, attrs)
             else:
-                #TEMP
                 children = [node_map[e[0]] for e in node["inputs"]]
                 new_entry = get_clone(children, op_name, node_name, attrs)
                 #continue
-
-            
-                
+     
             node_map[nid] = new_entry
 
-
-    # assuming the last node is always the output
-    #pdb.set_trace()
+    # ADD ANY LAYERS NECESSARY AT THE END BASED ON THE OUTPUT_LAYERS LIST
+    if output_layers:
+        for layer in output_layers:
+            if layer =='Softmax':
+                nodes = list(node_map.keys())
+                node_map[nodes[-1]+1] = sym.softmax(node_map[nodes[-1]])
+                
     node_map_list = list(node_map.items())
-    #return nnvm.graph.create(node_map_list[5][1])
-    return nnvm.graph.create(node_map_list[2][1])
+
+    # ASSUMING THE LAST NODE IS ALWAYS THE OUTPUT
+    return nnvm.graph.create(node_map_list[-1][1])
+
     
