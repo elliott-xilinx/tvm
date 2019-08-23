@@ -105,15 +105,20 @@ xfgraph.visualize('tvm_graph.png')
 # QUANTIZE
  
 import xfdnn.tools.io as xfdnn_io
-from xfdnn.tools.xfgraph.quantization import XfGraphAddScalingQuantizer
+from xfdnn.tools.xfgraph.quantization import XfGraphDefaultQuantizer, XfGraphAddScalingQuantizer
 calibration_directory = '/workspace/MLsuite/notebooks/calibration_directory'
 img_io_func = xfdnn_io.load_imgs_from_file(data_io, data_shape[2:4], model_name)
+
+quantizer = XfGraphDefaultQuantizer(
+    xfgraph=xfgraph,
+    quant_file=config["quantizecfg"], 
+    data_layout='NCHW',
+    data_loading_func=img_io_func,
+    calibration_directory=calibration_directory,
+    cal_size=15
+)
+quantizer.quantize()
  
-xfgraph.quantize(config["quantizecfg"], 
-                 data_layout='NCHW',
-                 data_loading_func=img_io_func,
-                 calibration_directory=calibration_directory)
-                 #quantization_class=XfGraphAddScalingQuantizer) #, stop='resnet_v1_50/block4/unit_3/bottleneck_v1/conv3/Conv2D')
 xfgraph.save('xfgraph')
  
 # COMPILE
