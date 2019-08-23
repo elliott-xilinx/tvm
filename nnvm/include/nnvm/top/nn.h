@@ -552,25 +552,24 @@ struct L2NormalizeParam : public dmlc::Parameter<L2NormalizeParam> {
 
 
 struct XDNNParam : public dmlc::Parameter<XDNNParam> {
-  int temp;
-  std::string json_graph;
+  std::string output_layout;
+  std::string json_path;
   Tuple<int> output_shape;
   //const std::vector<int> vtemp;
 
   DMLC_DECLARE_PARAMETER(XDNNParam) {
-    DMLC_DECLARE_FIELD(temp).set_default(0)
-      .describe("Size of the pooling windows..");
-    DMLC_DECLARE_FIELD(json_graph)
-      .describe("Graph of the Json to pass to runtime");
+    DMLC_DECLARE_FIELD(output_layout)
+      .describe("Layout of the output node");
+    DMLC_DECLARE_FIELD(json_path)
+      .describe("Path to the xdnn compiler generated files");
     DMLC_DECLARE_FIELD(output_shape)
-      .describe("shape of the output node");
-    //DMLC_DECLARE_FIELD(vtemp)
+      .describe("Shape of the output node");
+    //DMLC_DECLARE_FIELD(vtemp).set_default(0)
     //  .describe("vtemp");
 
 
   }
 };
-
 
 
 }  // namespace top

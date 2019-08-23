@@ -4,6 +4,9 @@ import nnvm
 import nnvm.symbol as sym
 import os
 
+# RECURSIVE ALGORITHM TO PARSE THE GRAPH,
+# AND FIND NODES BETWEEN THE OUTPUTS AND INPUTS
+# PROVIDED BY THE COMPILER
 def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count):
 
     # RETURN CONDITION
@@ -35,8 +38,10 @@ def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count):
     fuse(graph,xfuse_inputs,input_list,queue,fuse_list,count)
     
 
-
-def graph_reconst(json_path, nnvm_graph, output_layers=None): 
+# FUNCTION TO PARSE THROUGH THE NNVM GRAPH,
+# TRIM NODES BASED ON THE OUTPUT OF THE XDNN COMPILER,
+# AND CREATE A NEW NNVM GRAPH
+def graph_reconst(json_path, nnvm_graph, output_layout, output_layers=None): 
     node_map={}
     xdnn_inputs = []
 
@@ -48,7 +53,6 @@ def graph_reconst(json_path, nnvm_graph, output_layers=None):
     graph_outputs = json_graph["outputs"]
     #pdb.set_trace()
     compiler_shape_output = json_graph["network"][-1]["outputshapes"]
-    output_shape = (1,compiler_shape_output[2],compiler_shape_output[3],compiler_shape_output[1])   
     xfuse_inputs=[]
     fuse_list=[]
     queue=[]
@@ -78,22 +82,23 @@ def graph_reconst(json_path, nnvm_graph, output_layers=None):
             for layer in graph_outputs:
                 layer_name = layer['previous_layers'][0]
                 if node_name == layer_name:
-                    # create xdnn node
-                    # THE JSON_GRAPH MAY NEED TO BE CHANGED TO JSON_PATH
-                    # SINCE THE PATH IS NEEDED FOR ACCESSING OTHER XDNN FILES
-                    # ALSO, OS.GETCWD() MAY NEED TO BE CHANGED TO A SPECIFIC ADDRESS
-                    new_entry = sym.xdnn(*xdnn_inputs, json_graph=os.getcwd(), output_shape=output_shape)
+                    # CREATE XDNN NODE
+                    if output_layout == 'NHWC':
+                        output_shape = (1,compiler_shape_output[2],compiler_shape_output[3],compiler_shape_output[1])
+                    else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
+                        output_shape = (1,compiler_shape_output[1],compiler_shape_output[2],compiler_shape_output[3])   
+   
+                    new_entry = sym.xdnn(*xdnn_inputs, json_path=os.getcwd(), output_shape=output_shape, output_layout = output_layout)
                     node_map[nid] = new_entry
         else:
                     
-            if op_name == "null": #and nid != 540:
+            if op_name == "null":
                 new_entry = nnvm.symbol.Variable(node_name)
                 xdnn_inputs.append(new_entry)
             else:
                 children = [node_map[e[0]] for e in node["inputs"]]
                 new_entry = get_clone(children, op_name, node_name, attrs)
-                #continue
-     
+                  
             node_map[nid] = new_entry
 
     # ADD ANY LAYERS NECESSARY AT THE END BASED ON THE OUTPUT_LAYERS LIST
@@ -107,5 +112,6 @@ def graph_reconst(json_path, nnvm_graph, output_layers=None):
 
     # ASSUMING THE LAST NODE IS ALWAYS THE OUTPUT
     return nnvm.graph.create(node_map_list[-1][1])
+    #return nnvm.graph.create(node_map_list[1][1])
 
     
