@@ -24,20 +24,16 @@ def schedule_xdnn(attrs,outputs,target):
 @reg.register_compute("xdnn", level=15)
 def compute_xdnn(attrs,inputs,outputs):
     print ("-- debug: xdnn compute")
-
+    
     op = 'xdnn'
     name = 'xdnn0'
     attrs_dict = { k: attrs[k] for k in attrs.keys() }
     input_names = [inpt.op.name for inpt in inputs]
     in_shapes = [[int(i) for i in inpt.shape] for inpt in inputs]
     out_shapes = [[int(i) for i in outputs[0].shape]]
-
+    
     # EXTERNAL FUNCTION TO RUN THE FUSED OPERATION
-    #out = tvm.extern(outputs[0].shape, inputs, lambda ins, outs: tvm.call_packed('tvm.xdnn.xdnn', ins[0], ins[1], ins[1], outs[0], name), name=name)
-
-    #pdb.set_trace()
-
-    out = tvm.extern(outputs[0].shape, inputs, lambda ins, outs: tvm.call_packed('tvm.xdnn.xdnn_fused', attrs['json_graph'], outs[0], *ins ), name=name)
+    out = tvm.extern(outputs[0].shape, inputs, lambda ins, outs: tvm.call_packed('tvm.xdnn.xdnn_fused', attrs['json_path'], attrs['output_layout'], outs[0], *ins ), name=name)
     
       
     print(out.shape)
@@ -48,12 +44,12 @@ def compute_xdnn(attrs,inputs,outputs):
     
 
 @tvm.register_func("tvm.xdnn.xdnn_fused")
-#def xdnn_fused(data, weights, bias, out, name ):
-#def xdnn_fused(data, out, name ):
-def xdnn_fused(graph_path, out, *ins ):
+def xdnn_fused(graph_path, output_layout,  out, *ins ):
 
-    #pdb.set_trace()
-    path = c_char_p(graph_path.value).value
+
+    path   = c_char_p(graph_path.value).value
+    layout = c_char_p(output_layout.value).value
+    
     # CREATE A HANDLE FOR FPGA COMMUNICATION
     platform = os.environ.get('MLSUITE_PLATFORM')#"alveo-u200"
     xclbin = "/workspace/MLsuite/overlaybins/" + platform + "/overlay_4.xclbin"
@@ -61,7 +57,6 @@ def xdnn_fused(graph_path, out, *ins ):
     print("created xdnn manager")
     #ret, handles = xdnn_mgr.createHandle(xclbin, "kernelSxdnn_0")
     ret, handles = xdnn.createHandle(xclbin)
-     
     print("Handle value: %s" % handles[0].value)
     #assert ret==0, print("ERROR: Unable to create handle to FPGA")
     if ret != 0:
@@ -101,27 +96,27 @@ def xdnn_fused(graph_path, out, *ins ):
             
     print(batch_array)
      
-
-    fpgaInput["Placeholder"] = batch_array
+    # TODO HAS TO BE CHANGED FOR MULTIPLE INPUTS
+    fpgaInput[list(fpgaInput.keys())[0]] = batch_array
     print(fpgaInput)
      
     # WRITE FPGA INSTRUCTIONS TO FPGA AND EXECUTE THE NETWORK!
-    print(fpgaOutput)
+    #print(fpgaOutput)
     fpgaRT.execute(fpgaInput, fpgaOutput)
      
      
-    #np.set_printoptions(threshold=np.nan)
-    #print(fpgaOutput)
-     
-    #pdb.set_trace()
-    #temp = tvm.nd.array(np.zeros(out.shape, dtype=np.float32, order='C'))
-    #tvm.nd.array(fpgaOutput['max_pool2d0']).copyto(out)
+    # GET OUTPUT
     key, value  = fpgaOutput.popitem()
-    value = np.transpose(value,(0,2,3,1))
+
+
+    
+    # DEFAULT FPGA OUTPUT LAYOUT IS NCHW
+    if str(layout,encoding) == 'NHWC':
+        value = np.transpose(value,(0,2,3,1))
+        
     tvm.nd.array(value).copyto(out)
      
     print(" -- debug: tvm_reg_func done ")
-    #temp.copyto(out)
 
-    #value = np.transpose(ins[0].asnumpy(),(0,2,3,1))
-    #tvm.nd.array(value).copyto(out)
+
+
