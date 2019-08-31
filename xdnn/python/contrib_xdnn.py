@@ -16,14 +16,15 @@ import xfdnn.rt.xdnn_io as xdnn_io
 @reg.register_schedule("xdnn", level=15)
 def schedule_xdnn(attrs,outputs,target):
     #pdb.set_trace()
-    print("-- debug: xdnn schedule")
+    ##    print("-- debug: xdnn schedule")
     return tvm.create_schedule([x.op for x in outputs])
 
 
     
 @reg.register_compute("xdnn", level=15)
 def compute_xdnn(attrs,inputs,outputs):
-    print ("-- debug: xdnn compute")
+    #pdb.set_trace()
+    ##    print ("-- debug: xdnn compute")
     
     op = 'xdnn'
     name = 'xdnn0'
@@ -36,7 +37,7 @@ def compute_xdnn(attrs,inputs,outputs):
     out = tvm.extern(outputs[0].shape, inputs, lambda ins, outs: tvm.call_packed('tvm.xdnn.xdnn_fused', attrs['json_path'], attrs['output_layout'], outs[0], *ins ), name=name)
     
       
-    print(out.shape)
+    ##    print(out.shape)
     
     return out
     #return outputs
@@ -49,27 +50,25 @@ def xdnn_fused(graph_path, output_layout,  out, *ins ):
 
     path   = c_char_p(graph_path.value).value
     layout = c_char_p(output_layout.value).value
-    
+    print("PATH=",path)
     # CREATE A HANDLE FOR FPGA COMMUNICATION
     platform = os.environ.get('MLSUITE_PLATFORM')#"alveo-u200"
     xclbin = "/workspace/MLsuite/overlaybins/" + platform + "/overlay_4.xclbin"
-    #xdnn_mgr = xdnn.XDNNManager()
-    print("created xdnn manager")
-    #ret, handles = xdnn_mgr.createHandle(xclbin, "kernelSxdnn_0")
+
     ret, handles = xdnn.createHandle(xclbin)
-    print("Handle value: %s" % handles[0].value)
-    #assert ret==0, print("ERROR: Unable to create handle to FPGA")
+
     if ret != 0:
         print("ERROR: Unable to create handle to FPGA")
+        return
     else:
         print("INFO: Successfully created handle to FPGA")
      
     encoding = 'utf-8'
     args_dict = {
         'xclbin': xclbin,
-        'netcfg': str(path + b"/work/tvm_compiler.json",encoding),
-        'quantizecfg': str(path +  b"/work/tvm_quantizer.json",encoding),
-        'weights': str(path + b'/work/' + b'weights_data.h5',encoding), #config['weights'] + '_data.h5' if config['weights'] else "",
+        'netcfg': str(path + b"/tvm_fpga_cpu/tvm_compiler.json",encoding),
+        'quantizecfg': str(path +  b"/tvm_fpga_cpu/tvm_quantizer.json",encoding),
+        'weights': str(path + b'/tvm_fpga_cpu/' + b'weights_data.h5',encoding), #config['weights'] + '_data.h5' if config['weights'] else "",
         'scaleA': 1,
         'scaleB': 1,
         'PE': 0,
@@ -78,14 +77,11 @@ def xdnn_fused(graph_path, output_layout,  out, *ins ):
     }
      
     args = xdnn_io.make_dict_args(args_dict)
-    print(args)
      
     fpgaRT = xdnn.XDNNFPGAOp(handles,args)
      
     fpgaInput = fpgaRT.getInputs()
     fpgaOutput = fpgaRT.getOutputs()
-    print(fpgaInput)
-    print(fpgaOutput)
      
     batch_array = np.empty(((ins[0].shape[0],) + tuple(ins[0].shape[1:])), dtype=np.float32, order='C')
     data_paths = [ins[0].asnumpy()]
@@ -94,11 +90,11 @@ def xdnn_fused(graph_path, output_layout,  out, *ins ):
         for j, d in enumerate(data_paths[i:i + ins[0].shape[0]]):
             batch_array[j, ...] = d
             
-    print(batch_array)
+    ##    print(batch_array)
      
     # TODO HAS TO BE CHANGED FOR MULTIPLE INPUTS
     fpgaInput[list(fpgaInput.keys())[0]] = batch_array
-    print(fpgaInput)
+    ##    print(fpgaInput)
      
     # WRITE FPGA INSTRUCTIONS TO FPGA AND EXECUTE THE NETWORK!
     #print(fpgaOutput)
@@ -107,8 +103,6 @@ def xdnn_fused(graph_path, output_layout,  out, *ins ):
      
     # GET OUTPUT
     key, value  = fpgaOutput.popitem()
-
-
     
     # DEFAULT FPGA OUTPUT LAYOUT IS NCHW
     if str(layout,encoding) == 'NHWC':
@@ -116,7 +110,7 @@ def xdnn_fused(graph_path, output_layout,  out, *ins ):
         
     tvm.nd.array(value).copyto(out)
      
-    print(" -- debug: tvm_reg_func done ")
+    ##    print(" -- debug: tvm_reg_func done ")
 
 
 
