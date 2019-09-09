@@ -67,6 +67,7 @@ void ErrorReporter::RenderErrors(const Module& module, bool use_color) {
     std::stringstream err_msg;
 
     err_msg << rang::fg::red;
+    err_msg << " ";
     for (auto index : error_indicies) {
       err_msg << this->errors_[index].what() << "; ";
     }
@@ -88,7 +89,7 @@ void ErrorReporter::RenderErrors(const Module& module, bool use_color) {
   // First we output a header for the errors.
   annotated_prog <<
   rang::style::bold << std::endl <<
-  "Error(s) have occurred. We have annotated the program with them:"
+  "Error(s) have occurred. The program has been annotated with them:"
   << std::endl << std::endl << rang::style::reset;
 
   // For each global function which contains errors, we will
@@ -113,6 +114,7 @@ void ErrorReporter::RenderErrors(const Module& module, bool use_color) {
     annotated_prog << AsText(func, false, [&err_map](tvm::relay::Expr expr) {
       auto it = err_map.find(expr);
       if (it != err_map.end()) {
+        CHECK_NE(it->second.size(), 0);
         return it->second;
       } else {
         return std::string("");

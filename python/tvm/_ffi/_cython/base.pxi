@@ -37,6 +37,7 @@ cdef enum TVMTypeCode:
     kStr = 11
     kBytes = 12
     kNDArrayContainer = 13
+    kObjectCell = 14
     kExtBegin = 15
 
 cdef extern from "tvm/runtime/c_runtime_api.h":
@@ -76,6 +77,7 @@ ctypedef DLTensor* DLTensorHandle
 ctypedef void* TVMStreamHandle
 ctypedef void* TVMRetValueHandle
 ctypedef void* TVMFunctionHandle
+ctypedef void* ObjectHandle
 ctypedef void* NodeHandle
 
 ctypedef struct TVMNDArrayContainer:
@@ -128,6 +130,7 @@ cdef extern from "tvm/runtime/c_runtime_api.h":
     int TVMArrayToDLPack(DLTensorHandle arr_from,
                          DLManagedTensor** out)
     void TVMDLManagedTensorCallDeleter(DLManagedTensor* dltensor)
+    int TVMGetObjectTag(ObjectHandle obj, int* tag)
 
 cdef extern from "tvm/c_dsl_api.h":
     int TVMNodeFree(NodeHandle handle)

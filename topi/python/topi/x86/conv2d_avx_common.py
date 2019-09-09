@@ -23,7 +23,6 @@ from tvm.autotvm.task.space import SplitEntity, OtherOptionEntity
 from ..nn.util import infer_pad
 from ..util import get_const_tuple
 from .tensor_intrin import dot_16x1x16_int8_int8_int32
-from .check_targets import check_skylake
 from .util import get_fp32_len
 
 def _fallback_schedule(cfg, wkl):
@@ -143,10 +142,10 @@ def _schedule_conv_NCHWc(s, cfg, data, conv_out, last):
     C, O = conv_out, last
     CC = s.cache_write(C, 'global')
 
-    _, oc_chunk, oh, ow, oc_block = s[C].op.axis
+    batch, oc_chunk, oh, ow, oc_block = s[C].op.axis
     ow_chunk, ow_block = s[C].split(ow, factor=reg_n)
     s[C].reorder(oc_chunk, oh, ow_chunk, ow_block, oc_block)
-    parallel_axis = s[C].fuse(oc_chunk, oh)
+    parallel_axis = s[C].fuse(batch, oc_chunk, oh)
     s[C].vectorize(oc_block)
     if C == O:
         s[C].parallel(parallel_axis)
@@ -171,7 +170,7 @@ def _schedule_conv_NCHWc(s, cfg, data, conv_out, last):
         batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
         ow_chunk, ow_block = s[O].split(ow, factor=reg_n)
         s[O].reorder(oc_chunk, oh, ow_chunk, ow_block, oc_block)
-        parallel_axis = s[O].fuse(oc_chunk, oh)
+        parallel_axis = s[O].fuse(batch, oc_chunk, oh)
         s[C].compute_at(s[O], parallel_axis)
         s[O].vectorize(oc_block)
         s[O].parallel(parallel_axis)
@@ -186,19 +185,7 @@ def _schedule_conv_NCHWc_int8(s, cfg, data, conv_out, last):
     More details - https://software.intel.com/en-us/articles/
     lower-numerical-precision-deep-learning-inference-and-training
     """
-
-    # Currently INT8 operations are supported for only Skylake
-    # In future the _intrin_reduce4int8 will be updated for VNNI instructions
-    # In case of unsupported target, the schedule will go to the original
-    # compute
-
-    target = tvm.target.current_target(allow_none=False)
-    int32_lanes = -1
-    if check_skylake(target):
-        int32_lanes = 16
-    else:
-        return s
-    assert int32_lanes != -1
+    int32_lanes = 16
 
     reg_n, unroll_kw = cfg["tile_ow"].size[-1], cfg["unroll_kw"].val
     _, _, _, _, ic_bn = get_const_tuple(data.shape)
@@ -214,10 +201,10 @@ def _schedule_conv_NCHWc_int8(s, cfg, data, conv_out, last):
     C, O = conv_out, last
     CC = s.cache_write(C, 'global')
 
-    _, oc_chunk, oh, ow, oc_block = s[C].op.axis
+    batch, oc_chunk, oh, ow, oc_block = s[C].op.axis
     ow_chunk, ow_block = s[C].split(ow, factor=reg_n)
     s[C].reorder(oc_chunk, oh, ow_chunk, ow_block, oc_block)
-    parallel_axis = s[C].fuse(oc_chunk, oh)
+    parallel_axis = s[C].fuse(batch, oc_chunk, oh)
     s[C].vectorize(oc_block)
     if C == O:
         s[C].parallel(parallel_axis)
@@ -251,7 +238,7 @@ def _schedule_conv_NCHWc_int8(s, cfg, data, conv_out, last):
         batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
         ow_chunk, ow_block = s[O].split(ow, factor=reg_n)
         s[O].reorder(oc_chunk, oh, ow_chunk, ow_block, oc_block)
-        parallel_axis = s[O].fuse(oc_chunk, oh)
+        parallel_axis = s[O].fuse(batch, oc_chunk, oh)
         s[C].compute_at(s[O], parallel_axis)
         s[O].vectorize(oc_block)
         s[O].parallel(parallel_axis)

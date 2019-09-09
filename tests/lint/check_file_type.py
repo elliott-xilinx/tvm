@@ -41,6 +41,8 @@ ALLOW_EXTENSION = {
     "pxi",
     "pyd",
     "pyx",
+    # relay text format
+    "rly",
     # configurations
     "mk",
     "in",
@@ -62,11 +64,20 @@ ALLOW_EXTENSION = {
     "plist",
     "xcworkspacedata",
     "storyboard",
+    # hw/chisel
+    "sbt",
+    "properties",
+    "v",
+    "sdc",
+    # generated parser
+    "interp",
+    "tokens"
     }
 
 # List of file names allowed
 ALLOW_FILE_NAME = {
     ".gitignore",
+    ".gitattributes",
     "README",
     "Makefile",
     "Doxyfile",
@@ -76,6 +87,7 @@ ALLOW_FILE_NAME = {
     ".clang-format",
     ".gitmodules",
     "CODEOWNERS",
+    ".scalafmt.conf",
    }
 
 # List of specific files allowed in relpath to <proj_root>
@@ -97,6 +109,7 @@ ALLOW_SPECIFIC_FILE = {
     # documentation related files
     "docs/_static/css/tvm_theme.css",
     "docs/_static/img/tvm-logo-small.png",
+    "docs/_static/img/tvm-logo-square.png",
    }
 
 
@@ -151,7 +164,7 @@ def main():
         report += "\nFound %d files that are now allowed\n" % len(error_list)
         report += ("We do not check in binary files into the repo.\n"
                    "If necessary, please discuss with committers and"
-                   "modify tests/scripts/check_file_type.py to enable the file you need.\n")
+                   "modify tests/lint/check_file_type.py to enable the file you need.\n")
         sys.stderr.write(report)
         sys.stderr.flush()
         sys.exit(-1)

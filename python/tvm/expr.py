@@ -222,7 +222,7 @@ class NotEqualOp(NodeGeneric, ExprOp):
 
 class Expr(ExprOp, NodeBase):
     """Base class of all tvm Expressions"""
-    # In Python3, We have to explicity tell interpreter to retain __hash__ if we overide __eq__
+    # In Python3, We have to explicitly tell interpreter to retain __hash__ if we overide __eq__
     # https://docs.python.org/3.1/reference/datamodel.html#object.__hash__
     __hash__ = NodeBase.__hash__
 
@@ -349,6 +349,16 @@ class StringImm(ConstExpr):
         self.__init_handle_by_constructor__(
             _make.StringImm, value)
 
+    def __eq__(self, other):
+        if isinstance(other, ConstExpr):
+            return self.value == other.value
+        return self.value == other
+
+    def __ne__(self, other):
+        if isinstance(other, ConstExpr):
+            return self.value != other.value
+        return self.value != other
+
 
 @register_node
 class Cast(Expr):
@@ -450,6 +460,40 @@ class Mod(BinaryOpExpr):
     def __init__(self, a, b):
         self.__init_handle_by_constructor__(
             _make.Mod, a, b)
+
+
+@register_node
+class FloorDiv(BinaryOpExpr):
+    """FloorDiv node.
+
+    Parameters
+    ----------
+    a : Expr
+        The left hand operand.
+
+    b : Expr
+        The right hand operand.
+    """
+    def __init__(self, a, b):
+        self.__init_handle_by_constructor__(
+            _make.FloorDiv, a, b)
+
+
+@register_node
+class FloorMod(BinaryOpExpr):
+    """FloorMod node.
+
+    Parameters
+    ----------
+    a : Expr
+        The left hand operand.
+
+    b : Expr
+        The right hand operand.
+    """
+    def __init__(self, a, b):
+        self.__init_handle_by_constructor__(
+            _make.FloorMod, a, b)
 
 
 @register_node

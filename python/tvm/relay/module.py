@@ -21,7 +21,6 @@ from .._ffi import base as _base
 from . import _make
 from . import _module
 from . import expr as _expr
-
 from . import ty as _ty
 
 @register_relay_node
@@ -34,7 +33,7 @@ class Module(RelayNode):
 
     Parameters
     ----------
-    functions : dict, optional.
+    functions: Optional[dict].
         Map of global var to Function
     """
     def __init__(self, functions=None, type_definitions=None):
@@ -77,10 +76,13 @@ class Module(RelayNode):
         return self._add(var, val)
 
     def _add(self, var, val, update=False):
-        if isinstance(val, _expr.Function):
+        if isinstance(val, _expr.Expr):
             if isinstance(var, _base.string_types):
-                var = _expr.GlobalVar(var)
-            _make.Module_Add(self, var, val, update)
+                if _module.Module_ContainGlobalVar(self, var):
+                    var = _module.Module_GetGlobalVar(self, var)
+                else:
+                    var = _expr.GlobalVar(var)
+            _module.Module_Add(self, var, val, update)
         else:
             assert isinstance(val, _ty.Type)
             if isinstance(var, _base.string_types):
@@ -92,7 +94,7 @@ class Module(RelayNode):
 
         Parameters
         ----------
-        var: str or GlobalVar
+        var: Union[String, GlobalVar, GlobalTypeVar]
             The name or global variable.
 
         Returns
@@ -156,3 +158,47 @@ class Module(RelayNode):
         tvm.TVMError if we cannot find corresponding global type var.
         """
         return _module.Module_GetGlobalTypeVar(self, name)
+
+    def get_constructor(self, tag):
+        """Look up an ADT constructor by tag.
+
+        Parameters
+        ----------
+        tag: int
+            The tag for a constructor.
+
+        Returns
+        -------
+        constructor: Constructor
+           The constructor associated with the given tag,
+
+        Raises
+        ------
+        tvm.TVMError if the corresponding constructor cannot be found.
+        """
+        return _module.Module_LookupTag(self, tag)
+
+    @staticmethod
+    def from_expr(expr, functions=None, type_defs=None):
+        """Construct a module from a standalone expression.
+
+        Parameters
+        ----------
+        expr: Expr
+            The starting expression
+        global_funcs: Optional[dict]
+            Map of global vars to function definitions
+        type_defs: Optional[dict]
+            Map of global type vars to type definitions
+
+
+        Returns
+        -------
+        mod: Module
+            A module containing the passed definitions,
+            where expr is set as the entry point
+            (wrapped in a function if necessary)
+        """
+        funcs = functions if functions is not None else {}
+        defs = type_defs if type_defs is not None else {}
+        return _module.Module_FromExpr(expr, funcs, defs)

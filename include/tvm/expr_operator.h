@@ -24,6 +24,7 @@
  * \note Most of the operator defined here perform simple constant folding
  *   when the type is int32 or int64 for simplifying the index expressions.
  */
+// Acknowledgement: Most operator APIs originate from Halide.
 #ifndef TVM_EXPR_OPERATOR_H_
 #define TVM_EXPR_OPERATOR_H_
 
@@ -33,6 +34,7 @@
 #include "ir.h"
 
 namespace tvm {
+
 /*!
  * \brief Make a const value with certain data type.
  * \param t The target type.
@@ -331,6 +333,26 @@ TVM_DLL Expr operator||(Expr a, Expr b);
  */
 TVM_DLL Expr operator!(Expr a);
 /*!
+ * \brief compute floor(a / b)
+ *
+ * \param a left operand
+ * \param b right operand
+ * \return The result expression.
+ * \note this function does eager constant folding for
+ *       index types(int32, int64) when possible.
+ */
+TVM_DLL Expr floordiv(Expr a, Expr b);
+/*!
+ * \brief compute the remainder of floordiv
+ *
+ * \param a left operand
+ * \param b right operand
+ * \return The result expression.
+ * \note this function does eager constant folding for
+ *       index types(int32, int64) when possible.
+ */
+TVM_DLL Expr floormod(Expr a, Expr b);
+/*!
  * \brief take maximum of two values
  *
  * \param a left operand
@@ -428,6 +450,13 @@ TVM_DLL Expr abs(Expr x);
 TVM_DLL Expr sum(Expr source, Array<IterVar> axis);
 
 /*!
+ * \brief logical And of of source expression over axis
+ * \param source The source expression.
+ * \param axis List of iteration variables that will be used for reduction.
+ */
+TVM_DLL Expr all(Expr source, Array<IterVar> axis);
+
+/*!
  * \brief max of of source expression over axis
  * \param source The source expression.
  * \param axis List of iteration variables that will be used for reduction.
@@ -483,13 +512,15 @@ TVM_DLL Expr trunc(Expr x);
   }                                                                     \
 
 TVM_DECLARE_INTRIN_UNARY(exp);
+TVM_DECLARE_INTRIN_UNARY(erf);
 TVM_DECLARE_INTRIN_UNARY(tanh);
 TVM_DECLARE_INTRIN_UNARY(sigmoid);
 TVM_DECLARE_INTRIN_UNARY(sqrt);
 TVM_DECLARE_INTRIN_UNARY(rsqrt);
 TVM_DECLARE_INTRIN_UNARY(log);
 TVM_DECLARE_INTRIN_UNARY(popcount);
-
+TVM_DECLARE_INTRIN_UNARY(cos);
+TVM_DECLARE_INTRIN_UNARY(sin);
 
 // Implementation details after this
 inline bool is_const(const Expr& x) {
@@ -551,6 +582,12 @@ inline Expr MakeConstScalar(Type t, ValueType value) {
   if (t.is_int()) return ir::IntImm::make(t, static_cast<int64_t>(value));
   if (t.is_uint()) return ir::UIntImm::make(t, static_cast<uint64_t>(value));
   if (t.is_float()) return ir::FloatImm::make(t, static_cast<double>(value));
+  // For now, we store const scalar values of custom datatypes within doubles; later, during the
+  // datatypes lowering pass, we will lower the value to its true representation in the format
+  // specified by the datatype.
+  // TODO(gus) when do we need to start worrying about doubles not being precise enough?
+  if (static_cast<uint8_t>(t.code()) >= static_cast<uint8_t>(kCustomBegin))
+    return ir::FloatImm::make(t, static_cast<double>(value));
   LOG(FATAL) << "cannot make const for type " << t;
   return Expr();
 }

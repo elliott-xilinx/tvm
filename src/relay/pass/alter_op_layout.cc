@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- * 
+ *
  *   http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -18,16 +18,18 @@
  */
 
 /*!
- * Copyright (c) 2018 by Contributors
+ * Copyright (c) 2019 by Contributors
  * \file alter_op_layout.cc
  * \brief Alternate the layouts of operators or replace primitive operators with
           other expressions. This pass can be used for computing convolution in
           custom layouts or other general weight pre-transformation.
  */
-#include <tvm/relay/pass.h>
+#include <tvm/relay/analysis.h>
+#include <tvm/relay/transform.h>
 #include <tvm/relay/op_attr_types.h>
 #include <tvm/relay/attrs/transform.h>
-#include <tvm/tvm.h>
+#include <tvm/relay/transform.h>
+#include <tvm/operation.h>
 #include <tuple>
 #include <vector>
 #include <functional>
@@ -338,17 +340,32 @@ Expr AlterOpLayoutRewrite(const Call &ref_call,
 // Limiations:
 // 1. the altered op should have the same number of arguments as the previous one
 // 2. do not support nested tuple arguments
-TVM_REGISTER_API("relay._ir_pass.AlterOpLayout")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
+Expr AlterOpLayout(const Expr& expr) {
   TransformMemorizer transformMemorizer(make_node<TransformMemorizerNode>());
   auto fcontext = [&](const Call& call) -> NodeRef{
     return transformMemorizer;
   };
 
-  *ret = ForwardRewrite(args[0], AlterOpLayoutRewrite, fcontext);
-});
+  return ForwardRewrite(expr, AlterOpLayoutRewrite, fcontext);
+}
 
 }  // namespace alter_op_layout
+
+namespace transform {
+
+Pass AlterOpLayout() {
+  runtime::TypedPackedFunc<Function(Function, Module, PassContext)> pass_func =
+    [=](Function f, Module m, PassContext pc) {
+      return Downcast<Function>(relay::alter_op_layout::AlterOpLayout(f));
+  };
+  return CreateFunctionPass(pass_func, 3, "AlterOpLayout",
+                            {ir::StringImm::make("InferType")});
+}
+
+TVM_REGISTER_API("relay._transform.AlterOpLayout")
+.set_body_typed(AlterOpLayout);
+
+}  // namespace transform
 
 }  // namespace relay
 }  // namespace tvm

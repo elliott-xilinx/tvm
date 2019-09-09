@@ -19,17 +19,17 @@
 """Conv2D operators"""
 from __future__ import absolute_import as _abs
 from collections import namedtuple
-import numpy as np
 import tvm
 
 from .pad import pad
 from .util import get_pad_tuple
-from ..util import simplify, const_matrix, get_const_tuple
+from ..util import simplify, get_const_tuple
+from .winograd_util import winograd_transform_matrices
 
 # workload description of conv2d
 Workload = namedtuple('Workload',
-                      ['in_dtype', 'out_dtype', 'height', 'width', 'in_filter', 'out_filter',
-                       'hkernel', 'wkernel', 'hpad', 'wpad', 'hstride', 'wstride'])
+                      ['in_dtype', 'out_dtype', 'height', 'width', 'in_filter', 'groups',
+                       'out_filter', 'hkernel', 'wkernel', 'hpad', 'wpad', 'hstride', 'wstride'])
 
 @tvm.target.generic_func
 def conv2d(input, filter, strides, padding, dilation, layout='NCHW', out_dtype=None):
@@ -72,6 +72,28 @@ def conv2d(input, filter, strides, padding, dilation, layout='NCHW', out_dtype=N
 
 
 @tvm.target.generic_func
+def conv2d_legalize(attrs, inputs, types):
+    """Legalizes Conv2D op.
+
+    Parameters
+    ----------
+    attrs : tvm.attrs.Attrs
+        Attributes of current convolution
+    inputs : list of tvm.relay.Expr
+        The args of the Relay expr to be legalized
+    types : list of types
+        List of input and output types
+
+    Returns
+    -------
+    result : tvm.relay.Expr
+        The legalized expr
+    """
+    # not to change by default
+    return None
+
+
+@tvm.target.generic_func
 def conv2d_alter_layout(attrs, inputs, tinfos, F):
     """Change Conv2D layout.
 
@@ -94,12 +116,45 @@ def conv2d_alter_layout(attrs, inputs, tinfos, F):
     # not to change by default
     return None
 
+@tvm.target.generic_func
+def conv2d_infer_layout(workload, cfg):
+    """Infer input/output shapes and layouts from a workload and cfg.
 
-def _get_workload(data, kernel, stride, padding, out_dtype):
+    Parameters
+    ----------
+    workload : tuple
+        conv2d workload
+
+    cfg : tuple
+        tvm.autotvm config
+
+    Returns
+    -------
+    Output : [tuple of tuple and str, tuple of tuple and str]
+        Input shapes and layouts, and output shapes and layouts
+    """
+    raise ValueError("missing register for topi.nn.conv2d_infer_layout")
+
+
+
+def _get_workload(data, kernel, stride, padding, out_dtype, data_layout='NCHW'):
     """ Get the workload structure. """
-    _, CI, IH, IW = [x.value for x in data.shape]
-    CO, _, KH, KW = [x.value for x in kernel.shape]
+    if data_layout == 'NCHW':
+        _, CI, IH, IW = [x.value for x in data.shape]
+    elif data_layout == 'NHWC':
+        _, IH, IW, CI = [x.value for x in data.shape]
+    elif data_layout == 'HWCN':
+        IH, IW, CI, _ = [x.value for x in data.shape]
+    else:
+        raise ValueError("not support this layout {} yet".format(data_layout))
+
+    if data_layout == 'NCHW':
+        CO, CIG, KH, KW = [x.value for x in kernel.shape]
+    else:
+        KH, KW, CO, CIG = [x.value for x in kernel.shape]
+
     HPAD, WPAD, _, _ = get_pad_tuple(padding, kernel)
+    GRPS = CI // CIG
     if isinstance(stride, (tuple, list)):
         HSTR, WSTR = stride
     else:
@@ -107,7 +162,7 @@ def _get_workload(data, kernel, stride, padding, out_dtype):
     assert (data.dtype == kernel.dtype) or (data.dtype == 'uint8' and kernel.dtype == 'int8'), \
         "Do not support inputs with different data types now. ' \
         '{} vs. {}".format(data.dtype, kernel.dtype)
-    return Workload(data.dtype, out_dtype, IH, IW, CI, CO, KH, KW, HPAD, WPAD, HSTR, WSTR)
+    return Workload(data.dtype, out_dtype, IH, IW, CI, GRPS, CO, KH, KW, HPAD, WPAD, HSTR, WSTR)
 
 
 def conv2d_nchw(Input, Filter, stride, padding, dilation, out_dtype=None):
@@ -358,10 +413,7 @@ def conv2d_NCHWc(data, kernel, stride, padding, dilation, layout, out_layout, ou
 
     n, ic_chunk, ih, iw, ic_bn = get_const_tuple(data.shape)
     in_channel = ic_chunk * ic_bn
-    if data.dtype == 'uint8':
-        oc_chunk, _, kernel_height, kernel_width, _, oc_bn, _ = get_const_tuple(kernel.shape)
-    else:
-        oc_chunk, _, kernel_height, kernel_width, _, oc_bn = get_const_tuple(kernel.shape)
+    oc_chunk, _, kernel_height, kernel_width, _, oc_bn = get_const_tuple(kernel.shape)
     num_filter = oc_chunk * oc_bn
 
     # output shape
@@ -380,26 +432,6 @@ def conv2d_NCHWc(data, kernel, stride, padding, dilation, layout, out_layout, ou
     kh = tvm.reduce_axis((0, kernel_height), name='kh')
     kw = tvm.reduce_axis((0, kernel_width), name='kw')
 
-    if data.dtype == 'uint8':
-        assert out_dtype == "int32", \
-            "INT8 convolution requires input dtype = uint8 and output dtype=int32"
-        # Intel performs dot product of 2 "4" Int8 values
-        # Current implementation requires ic_bn to be a multiple of 4
-        n_elems = 4
-        assert ic_bn % n_elems == 0
-
-        ic_outer = tvm.reduce_axis((0, in_channel//ic_bn), name='ic_outer')
-        ic_f_inner = tvm.reduce_axis((0, ic_bn//n_elems), name='ic_f_inner')
-        ic_s_inner = tvm.reduce_axis((0, n_elems), name='ic_s_inner')
-        return tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
-                           tvm.sum(data_pad[n, ic_outer, oh*HSTR+kh, ow*WSTR+kw,
-                                            ic_f_inner * n_elems +  ic_s_inner]
-                                   .astype(out_dtype) *
-                                   kernel[oc_chunk, ic_outer, kh, kw, ic_f_inner,
-                                          oc_block, ic_s_inner].astype(out_dtype),
-                                   axis=[kh, kw, ic_outer, ic_f_inner, ic_s_inner]),
-                           name='conv2d_NCHWc_int8', tag="conv2d_NCHWc_int8")
-    # else: fp implementation
     return tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
                        tvm.sum(data_pad[n, ic//ic_bn, oh*HSTR+kh, ow*WSTR+kw,
                                         ic%ic_bn].astype(out_dtype) *
@@ -415,7 +447,7 @@ def conv2d_winograd_weight_transform(kernel, tile_size):
     Parameters
     ----------
     kernel: Tensor
-        The raw kernel tensor with layout "NCHW". Only 3x3 kernel is supported for now
+        The raw kernel tensor with layout "NCHW".
     tile_size: int
         Tile size of winograd transform. e.g. 2 for F(2x2, 3x3) and 4 for F(4x4, 3x3)
 
@@ -424,34 +456,15 @@ def conv2d_winograd_weight_transform(kernel, tile_size):
     output : tvm.Tensor
         4-D with shape [alpha, alpha, CO, CI]
     """
-    K = 3
-
     shape = get_const_tuple(kernel.shape)
-    assert shape[2:] == (K, K), "Only support 3x3 kernel"
+    assert shape[2] == shape[3], "Only support NxN kernel"
 
+    K = shape[3]
     r = tile_size + K - 1
     shape = (r, r) + shape[:2]
 
-    if tile_size == 2:
-        G_data = np.array([
-            [1, 0, 0],
-            [1.0/2, 1.0/2, 1.0/2],
-            [1.0/2, -1.0/2, 1.0/2],
-            [0, 0, 1],
-        ], dtype=kernel.dtype)
-    elif tile_size == 4:
-        G_data = np.array([
-            [1 / 4.0, 0, 0],
-            [-1 / 6.0, -1 / 6.0, -1 / 6.0],
-            [-1 / 6.0, 1 / 6.0, -1 / 6.0],
-            [1 / 24.0, 1 / 12.0, 1 / 6.0],
-            [1 / 24.0, -1 / 12.0, 1 / 6.0],
-            [0, 0, 1]
-        ], dtype=kernel.dtype)
-    else:
-        raise ValueError("Unsupoorted tile size:" + tile_size)
+    _, _, G = winograd_transform_matrices(tile_size, K, kernel.dtype)
 
-    G = const_matrix(G_data, 'G')
     r_kh = tvm.reduce_axis((0, K), name='r_kh')
     r_kw = tvm.reduce_axis((0, K), name='r_kw')
     return tvm.compute(shape, lambda eps, nu, co, ci:

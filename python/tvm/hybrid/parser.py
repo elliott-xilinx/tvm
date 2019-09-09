@@ -35,7 +35,6 @@ from ..container import Array
 from ..tensor import Tensor, Operation
 from .. import _api_internal as _tvm_internal
 from .. import expr as _expr
-from .. import stmt as _stmt
 from .. import make as _make
 from .. import api  as _api
 from .. import ir_pass as _ir_pass
@@ -43,16 +42,15 @@ from .. import ir_pass as _ir_pass
 
 def concat_list_to_block(lst):
     """Concatenate a list of Python IR nodes to HalideIR Block"""
+    if not lst:
+        return util.make_nop()
     n = len(lst)
     if n == 1:
         return lst[0]
     body = lst[n - 1]
     for i in range(1, n):
         stmt = lst[n - 1 - i]
-        if isinstance(stmt, _stmt.AssertStmt):
-            body = _make.AssertStmt(stmt.condition, stmt.message, body)
-        else:
-            body = _make.Block(stmt, body)
+        body = _make.Block(stmt, body)
     return body
 
 
@@ -100,8 +98,8 @@ class HybridParser(ast.NodeVisitor):
         ast.LtE     : operator.le,
         ast.Eq      : operator.eq,
         ast.NotEq   : operator.ne,
-        ast.And   : _all,
-        ast.Or    : _any,
+        ast.And     : _all,
+        ast.Or      : _any,
     }
 
 
@@ -112,7 +110,7 @@ class HybridParser(ast.NodeVisitor):
     }
 
 
-    def __init__(self, args, usage, symbols, func_name=None):
+    def __init__(self, args, usage, symbols, closure_vars, func_name=None):
         """
         Parameters
         ----------
@@ -121,6 +119,12 @@ class HybridParser(ast.NodeVisitor):
 
         usage: A dict of variables used in last in this function
             Provided by last lower pass, which collects this information
+
+        symbols : list of str
+            The symbol list of the global context of the function.
+
+        closure_vars: dict
+            A dict of external name reference captured by this function.
 
         Returns
         -------
@@ -135,6 +139,8 @@ class HybridParser(ast.NodeVisitor):
         for k, v in symbols.items():
             if isinstance(v, types.FunctionType):
                 self.add_symbol(k, Symbol.Callable, v)
+
+        self.closure_vars = closure_vars
 
         self.binds = {} # Thread binds
         self.device = 0 # Is it generating device
@@ -171,6 +177,9 @@ class HybridParser(ast.NodeVisitor):
         to_pop = []
         for key, val in self.usage.items():
             _, level, _ = val
+            if key not in self.symbols:
+                # don't realize the symbols that are never visited
+                continue
             if level != node:
                 continue
             _internal_assert(key in self.symbols.keys(), "Unknown symbol %s!" % key)
@@ -236,7 +245,11 @@ class HybridParser(ast.NodeVisitor):
     def visit_Name(self, node):
         name = node.id
         if sys.version_info[0] == 2 and name in ['True', 'False']:
-            return _api.convert(eval(name)) #pylint: disable=eval-used
+            return _api.convert(ast.literal_eval(name))
+
+        if name in self.closure_vars:
+            return _api.convert(self.closure_vars[name])
+
         ty, entry = self.symbols[name]
         _internal_assert(name in self.symbols, "Unknown symbol %s!" % name)
         if ty in [Symbol.LoopVar, Symbol.Input, Symbol.ConstLoopVar]:
@@ -351,42 +364,25 @@ class HybridParser(ast.NodeVisitor):
 
 
     def visit_Attribute(self, node):
-        _internal_assert(isinstance(node.value, ast.Name), \
-                         "For atrribute access, only both names are supported so far!")
         buf = self.visit(node.value)
         return getattr(buf, node.attr)
 
-
     def visit_Subscript(self, node):
         args = self.visit(node.slice)
-        if isinstance(node.value, ast.Name):
-
-            buf = self.visit(node.value)
-            if isinstance(buf, Array):
-                for i in args:
-                    if isinstance(i, numbers.Integral):
-                        buf = buf[i]
-                    else:
-                        _internal_assert(isinstance(i, (_expr.IntImm, _expr.UIntImm)), \
-                                         "All indices are supposed to be constants")
-                        buf = buf[i.value]
-
-                return buf
-
-            if isinstance(node.ctx, ast.Load):
-                return _make.Call(buf.dtype, buf.name, args, \
-                                  _expr.Call.Halide, buf.op, buf.value_index)
-
-            return buf, args
-
-        shape = self.visit(node.value)
-        _internal_assert(len(args) == 1, "For 'shape' access the argument should be only one!")
-        args = args[0]
-        #TODO: maybe support non-constant value later?
-        _internal_assert(isinstance(args, (_expr.IntImm, _expr.UIntImm)), \
-                         "So far only constant shape access supported!")
-        return shape[args.value]
-
+        arr = self.visit(node.value)
+        if isinstance(arr, Array):
+            for i in args:
+                if isinstance(i, numbers.Integral):
+                    arr = arr[i]
+                else:
+                    _internal_assert(isinstance(i, (_expr.IntImm, _expr.UIntImm)), \
+                                     "All indices are supposed to be constants")
+                    arr = arr[i.value]
+            return arr
+        if isinstance(node.ctx, ast.Load):
+            return _make.Call(arr.dtype, arr.name, args,
+                              _expr.Call.Halide, arr.op, arr.value_index)
+        return arr, args
 
     def visit_With(self, node):
         if sys.version_info[0] < 3:
@@ -403,7 +399,7 @@ class HybridParser(ast.NodeVisitor):
 
 
     def visit_If(self, node):
-        cond = self.visit(node.test)
+        cond = _ir_pass.CanonicalSimplify(self.visit(node.test))
 
         # Return no IfThenElse if proven
         if isinstance(cond, _expr.UIntImm):
@@ -494,11 +490,11 @@ class HybridParser(ast.NodeVisitor):
         _name = node.target.id
 
         if isinstance(for_type, tuple):
-            low = _ir_pass.Simplify(low)
-            ext = _ir_pass.Simplify(ext)
+            low = _ir_pass.CanonicalSimplify(low)
+            ext = _ir_pass.CanonicalSimplify(ext)
             _internal_assert(isinstance(low, _expr.ConstExpr) and
                              isinstance(ext, _expr.ConstExpr), \
-                             "Const range should start from a const" + \
+                             "Const range should start from a const " + \
                              "and iterate const times")
 
             low, ext = low.value, ext.value
@@ -576,7 +572,7 @@ class HybridParser(ast.NodeVisitor):
         return _make.AssertStmt(test, mesg, util.make_nop())
 
 
-def parse_python(src, symbols, args):
+def parse_python(src, args, symbols, closure_vars):
     """The helper function of calling the AST visitor
 
     Parameters
@@ -585,13 +581,16 @@ def parse_python(src, symbols, args):
         If an ast.node, then directly lower it.
         If a str, then parse it to ast and lower it.
 
-    symbols : str
-        The symbol list of the global context of the function.
-
     args : list of Tensors or Vars
         The argument lists to the function.
         It is NOT encouraged to write a function without arguments.
         It is NOT encouraged to write a function with side effect.
+
+    symbols : list of str
+        The symbol list of the global context of the function.
+
+    closure_vars: dict
+        A dict of external name reference captured by this function.
 
     Returns
     -------
@@ -600,14 +599,14 @@ def parse_python(src, symbols, args):
     """
     root = ast.parse(src) if isinstance(src, str) else src
     _internal_assert(root, ast.AST)
-    var_usage = determine_variable_usage(root, args, symbols)
-    parser = HybridParser(args, var_usage, symbols)
+    var_usage = determine_variable_usage(root, args, symbols, closure_vars)
+    parser = HybridParser(args, var_usage, symbols, closure_vars)
     parser.parsed_body = parser.visit(root)
     _internal_assert(parser.returned, 'No valid return found in the function body!')
     return parser
 
 
-def source_to_op(src, symbols, args):
+def source_to_op(src, args, symbols, closure_vars):
     """Another level of wrapper
 
     Parameters
@@ -616,20 +615,23 @@ def source_to_op(src, symbols, args):
         If an ast.node, then directly lower it.
         If a str, then parse it to ast and lower it.
 
-    symbols : str
-        The symbol list of the global context of the function.
-
     args : list of Tensors or Vars
         The argument lists to the function.
         It is NOT encouraged to write a function without arguments.
         It is NOT encouraged to write a function with side effect.
+
+    symbols : list of str
+        The symbol list of the global context of the function.
+
+    closure_vars: dict
+        A dict of external name reference captured by this function.
 
     Returns
     -------
     res : list of output tensors
         The result of output tensors of the formed OpNode.
     """
-    parser = parse_python(src, symbols, args)
+    parser = parse_python(src, args, symbols, closure_vars)
 
     input_tensors = []
     for i in args:

@@ -94,7 +94,7 @@ inline bool IsTensorType(TVMArgValue arg) {
 
 TVM_REGISTER_GLOBAL("topi.TEST_create_target")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
-  *rv = tvm::Target::create(args[0]);
+  *rv = tvm::Target::Create(args[0]);
   });
 
 /* Ops from broadcast.h */
@@ -148,6 +148,20 @@ TVM_REGISTER_GLOBAL("topi.exp")
   *rv = exp(args[0]);
   });
 
+TVM_REGISTER_GLOBAL("topi.erf")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  *rv = erf(args[0]);
+  });
+
+TVM_REGISTER_GLOBAL("topi.cos")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  *rv = cos(args[0]);
+  });
+
+TVM_REGISTER_GLOBAL("topi.sin")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  *rv = sin(args[0]);
+  });
 TVM_REGISTER_GLOBAL("topi.tanh")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
   *rv = tanh(args[0]);
@@ -191,6 +205,12 @@ TVM_REGISTER_GLOBAL("topi.clip")
 TVM_REGISTER_GLOBAL("topi.cast")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
   *rv = cast(args[0], args[1]);
+  });
+
+
+TVM_REGISTER_GLOBAL("topi.reinterpret")
+.set_body([](TVMArgs args, TVMRetValue* rv) {
+  *rv = reinterpret(args[0], args[1]);
   });
 
 TVM_REGISTER_GLOBAL("topi.elemwise_sum")
@@ -265,6 +285,11 @@ TVM_REGISTER_GLOBAL("topi.prod")
   *rv = topi::prod(args[0], ArrayOrInt(args[1]), args[2]);
   });
 
+TVM_REGISTER_GLOBAL("topi.all")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  *rv = topi::all(args[0], ArrayOrInt(args[1]), args[2]);
+  });
+
 /* Ops from transform.h */
 TVM_REGISTER_GLOBAL("topi.expand_dims")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
@@ -306,6 +331,11 @@ TVM_REGISTER_GLOBAL("topi.shape")
   *rv = shape(args[0], args[1]);
 });
 
+TVM_REGISTER_GLOBAL("topi.ndarray_size")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  *rv = ndarray_size(args[0], args[1]);
+});
+
 TVM_REGISTER_GLOBAL("topi.split")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
   if (args[1].type_code() == kDLInt || args[1].type_code() == kDLUInt) {
@@ -331,6 +361,14 @@ TVM_REGISTER_GLOBAL("topi.take")
     *rv = take(args[0], args[1], axis, mode);
   }
   });
+
+TVM_REGISTER_GLOBAL("topi.sequence_mask")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  double pad_val = args[2];
+  int axis = args[3];
+  *rv = sequence_mask(args[0], args[1], pad_val, axis);
+});
+
 
 TVM_REGISTER_GLOBAL("topi.where")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
@@ -381,6 +419,14 @@ TVM_REGISTER_GLOBAL("topi.tensordot")
 TVM_REGISTER_GLOBAL("topi.strided_slice")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
   *rv = strided_slice(args[0], args[1], args[2], args[3]);
+  });
+
+TVM_REGISTER_GLOBAL("topi.one_hot")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  int depth = args[3];
+  int axis = args[4];
+  DataType dtype = args[5];
+  *rv = one_hot(args[0], args[1], args[2], depth, axis, dtype);
   });
 
 /* Ops from nn/upsampling.h */
@@ -449,11 +495,25 @@ TVM_REGISTER_GLOBAL("topi.nn.pool")
                  args[5], args[6], args[7]);
   });
 
+TVM_REGISTER_GLOBAL("topi.nn.pool_grad")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  *rv = nn::pool_grad(args[0], args[1], args[2], args[3], args[4],
+                 static_cast<nn::PoolType>(static_cast<int>(args[5])),
+                 args[6], args[7], args[8]);
+  });
+
 TVM_REGISTER_GLOBAL("topi.nn.global_pool")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
   *rv = nn::global_pool(args[0],
                         static_cast<nn::PoolType>(static_cast<int>(args[1])));
   });
+
+TVM_REGISTER_GLOBAL("topi.nn.adaptive_pool")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  *rv = nn::adaptive_pool(args[0], args[1],
+                          static_cast<nn::PoolType>(static_cast<int>(args[2])),
+                          args[3]);
+});
 
 /* Ops from nn/softmax.h */
 TVM_REGISTER_GLOBAL("topi.nn.softmax")
@@ -628,7 +688,7 @@ using FTVMScheduleBuilder = std::function<
  */
 inline PackedFunc WrapSchedule(FTVMScheduleBuilder builder) {
   return PackedFunc([builder](TVMArgs args, TVMRetValue* ret) {
-    auto target = Target::current_target(false);
+    auto target = Target::Current(false);
     Array<Tensor> outs;
     NodeRef argNodeRef = args[0];
     if (argNodeRef->type_index() == outs->type_index()) {
@@ -700,7 +760,7 @@ using FTVMDenseOpBuilder = std::function<tvm::Tensor(const Target& target,
 */
 inline PackedFunc WrapDenseOp(FTVMDenseOpBuilder builder) {
   return PackedFunc([builder](TVMArgs args, TVMRetValue* ret) {
-    auto target = Target::current_target(false);
+    auto target = Target::Current(false);
     Tensor data = args[0];
     Tensor weight = args[1];
     Tensor bias = args[2];

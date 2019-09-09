@@ -22,9 +22,9 @@ from tvm.relay.frontend.tensorflow import from_tensorflow
 
 
 def check_equal(graph, tf_out):
-    expr, params = from_tensorflow(graph.as_graph_def(add_shapes=True))
-    ex = relay.create_executor('debug')
-    relay_out = ex.evaluate(expr)(**params)
+    mod, params = from_tensorflow(graph.as_graph_def(add_shapes=True))
+    ex = relay.create_executor('debug', mod=mod)
+    relay_out = ex.evaluate()(**params)
     if isinstance(relay_out, relay.backend.interpreter.TensorValue):
         np.testing.assert_allclose(tf_out, relay_out.asnumpy())
     else:
@@ -38,6 +38,23 @@ def test_vanilla_loop():
     graph = tf.Graph()
     with graph.as_default():
         i = tf.constant(0)
+
+        def c(i): return tf.less(i, 10)
+
+        def b(i): return tf.add(i, 1)
+
+        r = tf.while_loop(c, b, [i])
+
+        with tf.Session() as sess:
+            tf_out = sess.run(r)
+
+        check_equal(graph, tf_out)
+
+
+def test_callnode_loop_vars():
+    graph = tf.Graph()
+    with graph.as_default():
+        i = tf.add(tf.constant(0), 1)
 
         def c(i): return tf.less(i, 10)
 
@@ -288,6 +305,7 @@ if __name__ == "__main__":
     test_loop_3_vars()
     test_loop_conditions()
     test_loop_bodies()
+    test_callnode_loop_vars()
 
     # tf.cond
     test_vanilla_cond()

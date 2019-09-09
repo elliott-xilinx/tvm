@@ -44,6 +44,7 @@ cdef int tvm_callback(TVMValue* args,
         if (tcode == kNodeHandle or
             tcode == kFuncHandle or
             tcode == kModuleHandle or
+            tcode == kObjectCell or
             tcode > kExtBegin):
             CALL(TVMCbArgToReturn(&value, tcode))
 
@@ -157,6 +158,9 @@ cdef inline int make_arg(object arg,
     elif isinstance(arg, _CLASS_MODULE):
         value[0].v_handle = c_handle(arg.handle)
         tcode[0] = kModuleHandle
+    elif isinstance(arg, _CLASS_OBJECT):
+        value[0].v_handle = c_handle(arg.handle)
+        tcode[0] = kObjectCell
     elif isinstance(arg, FunctionBase):
         value[0].v_handle = (<FunctionBase>arg).chandle
         tcode[0] = kFuncHandle
@@ -208,6 +212,8 @@ cdef inline object make_ret(TVMValue value, int tcode):
         fobj = _CLASS_FUNCTION(None, False)
         (<FunctionBase>fobj).chandle = value.v_handle
         return fobj
+    elif tcode == kObjectCell:
+        return make_ret_object(value.v_handle)
     elif tcode in _TVM_EXT_RET:
         return _TVM_EXT_RET[tcode](ctypes_handle(value.v_handle))
 
@@ -304,8 +310,10 @@ cdef class FunctionBase:
         FuncCall(self.chandle, args, &ret_val, &ret_tcode)
         return make_ret(ret_val, ret_tcode)
 
+
 _CLASS_FUNCTION = None
 _CLASS_MODULE = None
+_CLASS_OBJECT = None
 
 def _set_class_module(module_class):
     """Initialize the module."""
@@ -315,3 +323,7 @@ def _set_class_module(module_class):
 def _set_class_function(func_class):
     global _CLASS_FUNCTION
     _CLASS_FUNCTION = func_class
+
+def _set_class_object(obj_class):
+    global _CLASS_OBJECT
+    _CLASS_OBJECT = obj_class

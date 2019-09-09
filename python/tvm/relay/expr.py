@@ -70,6 +70,38 @@ class Expr(RelayNode):
     def __neg__(self):
         return _op_make.negative(self)
 
+    def __lt__(self, other):
+        if isinstance(other, Expr):
+            return _op_make.less(self, other)
+        elif isinstance(other, _Number):
+            raise TypeError('convert "%s" with `const` first' % str(other))
+        else:
+            raise TypeError("type %s not supported" % str(type(other)))
+
+    def __gt__(self, other):
+        if isinstance(other, Expr):
+            return _op_make.greater(self, other)
+        elif isinstance(other, _Number):
+            raise TypeError('convert "%s" with `const` first' % str(other))
+        else:
+            raise TypeError("type %s not supported" % str(type(other)))
+
+    def __ge__(self, other):
+        if isinstance(other, Expr):
+            return _op_make.greater_equal(self, other)
+        elif isinstance(other, _Number):
+            raise TypeError('convert "%s" with `const` first' % str(other))
+        else:
+            raise TypeError("type %s not supported" % str(type(other)))
+
+    def __le__(self, other):
+        if isinstance(other, Expr):
+            return _op_make.less_equal(self, other)
+        elif isinstance(other, _Number):
+            raise TypeError('convert "%s" with `const` first' % str(other))
+        else:
+            raise TypeError("type %s not supported" % str(type(other)))
+
     def __add__(self, other):
         if isinstance(other, Expr):
             return _op_make.add(self, other)
@@ -126,6 +158,20 @@ class Expr(RelayNode):
     def __rtruediv__(self, other):
         return self.__rdiv__(other)
 
+    def __call__(self, *args):
+        """Call the variable (if it represents a function).
+
+        Parameters
+        ----------
+        args: List[relay.Expr]
+            The arguments to the call.
+
+        Returns
+        -------
+        call: Call
+            A call taking the variable as a function.
+        """
+        return Call(self, args)
 
 @register_relay_node
 class Constant(Expr):
@@ -191,20 +237,6 @@ class Var(Expr):
         name = self.vid.name_hint
         return name
 
-    def __call__(self, *args):
-        """Call the variable (if it represents a function).
-
-        Parameters
-        ----------
-        args: List[relay.Expr]
-            The arguments to the call.
-
-        Returns
-        -------
-        call: Call
-            A call taking the variable as a function.
-        """
-        return Call(self, args)
 
 @register_relay_node
 class GlobalVar(Expr):
@@ -538,6 +570,7 @@ def const(value, dtype=None):
     """
     if isinstance(value, (_base.numeric_types, (bool, list))):
         value = _np.array(value, dtype=dtype)
+
     if not dtype:
         # when dtype is None: int maps to "int32", float maps to "float32"
         map_dtype = {
@@ -546,6 +579,7 @@ def const(value, dtype=None):
             }.get(value.dtype, None)
         if map_dtype:
             value = value.astype(map_dtype)
+
     if isinstance(value, (_np.ndarray, _np.generic)):
         value = _nd.array(value)
 

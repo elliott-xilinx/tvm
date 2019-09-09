@@ -27,7 +27,7 @@ The operator implementation for ARM CPU in TVM is written in template form.
 The template has many tunable knobs (tile factor, vectorization, unrolling, etc).
 We will tune all convolution and depthwise convolution operators
 in the neural network. After tuning, we produce a log file which stores
-the best knob values for all required operators. When the tvm compiler compiles
+the best knob values for all required operators. When the TVM compiler compiles
 these operators, it will query this log file to get the best knob values.
 
 We also released pre-tuned parameters for some arm devices. You can go to
@@ -45,8 +45,8 @@ to see the results.
 #
 #   pip3 install --user psutil xgboost tornado
 #
-# To make tvm run faster during tuning, it is recommended to use cython
-# as FFI of tvm. In the root directory of tvm, execute
+# To make TVM run faster during tuning, it is recommended to use cython
+# as FFI of TVM. In the root directory of TVM, execute
 # (change "3" to "2" if you use python2):
 #
 # .. code-block:: bash
@@ -81,27 +81,29 @@ def get_network(name, batch_size):
 
     if "resnet" in name:
         n_layer = int(name.split('-')[1])
-        net, params = relay.testing.resnet.get_workload(num_layers=n_layer, batch_size=batch_size, dtype=dtype)
+        mod, params = relay.testing.resnet.get_workload(num_layers=n_layer, batch_size=batch_size, dtype=dtype)
     elif "vgg" in name:
         n_layer = int(name.split('-')[1])
-        net, params = relay.testing.vgg.get_workload(num_layers=n_layer, batch_size=batch_size, dtype=dtype)
+        mod, params = relay.testing.vgg.get_workload(num_layers=n_layer, batch_size=batch_size, dtype=dtype)
     elif name == 'mobilenet':
-        net, params = relay.testing.mobilenet.get_workload(batch_size=batch_size)
+        mod, params = relay.testing.mobilenet.get_workload(batch_size=batch_size)
     elif name == 'squeezenet_v1.1':
-        net, params = relay.testing.squeezenet.get_workload(batch_size=batch_size, version='1.1', dtype=dtype)
+        mod, params = relay.testing.squeezenet.get_workload(batch_size=batch_size, version='1.1', dtype=dtype)
     elif name == 'inception_v3':
         input_shape = (1, 3, 299, 299)
-        net, params = relay.testing.inception_v3.get_workload(batch_size=batch_size, dtype=dtype)
+        mod, params = relay.testing.inception_v3.get_workload(batch_size=batch_size, dtype=dtype)
     elif name == 'mxnet':
         # an example for mxnet model
         from mxnet.gluon.model_zoo.vision import get_model
         block = get_model('resnet18_v1', pretrained=True)
-        net, params = relay.frontend.from_mxnet(block, shape={'data': input_shape}, dtype=dtype)
+        mod, params = relay.frontend.from_mxnet(block, shape={'data': input_shape}, dtype=dtype)
+        net = mod["main"]
         net = relay.Function(net.params, relay.nn.softmax(net.body), None, net.type_params, net.attrs)
+        mod = relay.Module.from_expr(net)
     else:
         raise ValueError("Unsupported network: " + name)
 
-    return net, params, input_shape, output_shape
+    return mod, params, input_shape, output_shape
 
 
 #################################################################
@@ -134,11 +136,11 @@ def get_network(name, batch_size):
 # Register devices to RPC Tracker
 # -----------------------------------
 # Now we can register our devices to the tracker. The first step is to
-# build tvm runtime for the ARM devices.
+# build the TVM runtime for the ARM devices.
 #
 # * For Linux:
 #   Follow this section :ref:`build-tvm-runtime-on-device` to build
-#   tvm runtime on the device. Then register the device to tracker by
+#   the TVM runtime on the device. Then register the device to tracker by
 #
 #   .. code-block:: bash
 #
@@ -148,7 +150,7 @@ def get_network(name, batch_size):
 #
 # * For Android:
 #   Follow this `readme page <https://github.com/dmlc/tvm/tree/master/apps/android_rpc>`_ to
-#   install tvm rpc apk on the android device. Make sure you can pass the android rpc test.
+#   install the TVM RPC APK on the android device. Make sure you can pass the android rpc test.
 #   Then you have already registred your device. During tuning, you have to go to developer option
 #   and enable "Keep screen awake during changing" and charge your phone to make it stable.
 #
@@ -315,10 +317,10 @@ def tune_tasks(tasks,
 def tune_and_evaluate(tuning_opt):
     # extract workloads from relay program
     print("Extract tasks...")
-    net, params, input_shape, _ = get_network(network, batch_size=1)
-    tasks = autotvm.task.extract_from_program(net, target=target,
-                                            params=params,
-                                            ops=(relay.op.nn.conv2d,))
+    mod, params, input_shape, _ = get_network(network, batch_size=1)
+    tasks = autotvm.task.extract_from_program(mod["main"], target=target,
+                                              params=params,
+                                              ops=(relay.op.nn.conv2d,))
 
     # run tuning tasks
     print("Tuning...")
@@ -329,7 +331,7 @@ def tune_and_evaluate(tuning_opt):
         print("Compile...")
         with relay.build_config(opt_level=3):
             graph, lib, params = relay.build_module.build(
-                net, target=target, params=params)
+                mod, target=target, params=params)
 
         # export library
         tmp = tempdir()

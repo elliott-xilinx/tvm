@@ -24,7 +24,7 @@ def _default_schedule(outs, auto_inline):
     """Default schedule for llvm."""
     target = tvm.target.current_target(allow_none=False)
     outs = [outs] if isinstance(outs, tvm.tensor.Tensor) else outs
-    if target.target_name != "llvm":
+    if target.target_name not in ("llvm", "c"):
         raise RuntimeError("schedule not registered for '%s'" % target)
     s = tvm.create_schedule([x.op for x in outs])
     if auto_inline:
@@ -42,6 +42,24 @@ def schedule_conv2d_nchw(outs):
     ----------
     outs: Array of Tensor
           The computation graph description of conv2d_nchw
+          in the format of an array of tensors.
+
+    Returns
+    -------
+    sch: Schedule
+        The computation schedule for the op.
+    """
+    return _default_schedule(outs, False)
+
+
+@tvm.target.generic_func
+def schedule_conv2d_nhwc_pack(outs):
+    """Schedule for conv2d_nhwc_pack
+
+    Parameters
+    ----------
+    outs: Array of Tensor
+          The computation graph description of conv2d_nhwc_pack
           in the format of an array of tensors.
 
     Returns
@@ -403,14 +421,27 @@ def schedule_pool(outs, layout):
     return _default_schedule(outs, False)
 
 
-@tvm.target.override_native_generic_func("schedule_global_pool")
-def schedule_global_pool(outs):
-    """Schedule for global pool
+@tvm.target.generic_func
+def schedule_pool_grad(outs):
+    """Schedule for pool_grad
 
     Parameters
     ----------
     outs: Array of Tensor
-          The computation graph description of global pool
+          The computation graph description of pool
+          in the format of an array of tensors.
+    """
+    return _default_schedule(outs, False)
+
+
+@tvm.target.override_native_generic_func("schedule_adaptive_pool")
+def schedule_adaptive_pool(outs):
+    """Schedule for adaptive pool
+
+    Parameters
+    ----------
+    outs: Array of Tensor
+          The computation graph description of adaptive pool
           in the format of an array of tensors.
 
     Returns
@@ -419,6 +450,7 @@ def schedule_global_pool(outs):
         The computation schedule for the op.
     """
     return _default_schedule(outs, False)
+
 
 @tvm.target.override_native_generic_func("schedule_binarize_pack")
 def schedule_binarize_pack(outs):
@@ -429,6 +461,23 @@ def schedule_binarize_pack(outs):
     outs: Array of Tensor
           The computation graph description of binarize_pack
           in the format of an array of tensors.
+
+    Returns
+    -------
+    sch: Schedule
+        The computation schedule for the op.
+    """
+    return _default_schedule(outs, False)
+
+
+@tvm.target.override_native_generic_func("schedule_bitpack")
+def schedule_bitpack(outs):
+    """Schedule for bitpack
+    Parameters
+    ----------
+    outs: Array of Tensor
+        The computation graph description of bitpack
+        in the format of an array of tensors.
 
     Returns
     -------
@@ -493,6 +542,40 @@ def schedule_l2_normalize(outs):
     target = tvm.target.current_target(allow_none=False)
     cpp_target = cpp.TEST_create_target(target.target_name)
     return cpp.generic.default_schedule(cpp_target, outs, False)
+
+@tvm.target.generic_func
+def schedule_sparse_dense(outs):
+    """Schedule for sparse_dense
+
+    Parameters
+    ----------
+    outs: Array of Tensor
+          The computation graph description of sparse_dense
+          in the format of an array of tensors.
+
+    Returns
+    -------
+    sch: Schedule
+        The computation schedule for the op.
+    """
+    return _default_schedule(outs, False)
+
+@tvm.target.generic_func
+def schedule_sparse_transpose(outs):
+    """Schedule for sparse_transpose
+
+    Parameters
+    ----------
+    outs: Array of Tensor
+          The computation graph description of sparse_transpose
+          in the format of an array of tensors.
+
+    Returns
+    -------
+    sch: Schedule
+        The computation schedule for the op.
+    """
+    return _default_schedule(outs, False)
 
 @tvm.target.generic_func
 def schedule_batch_matmul(outs):

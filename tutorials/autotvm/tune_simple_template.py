@@ -17,29 +17,29 @@
 """
 Writing tunable template and Using auto-tuner
 =============================================
-**Author**: `Lianmin Zheng <https://https://github.com/merrymercy>`_
+**Author**: `Lianmin Zheng <https://github.com/merrymercy>`_
 
-This is an introduction tutorial to the auto-tuning module in tvm.
+This is an introduction tutorial to the auto-tuning module in TVM.
 
 There are two steps in auto-tuning.
 The first step is defining a search space.
 The second step is running a search algorithm to explore through this space.
-In this tutorial, you can learn how to perform these two steps in tvm.
+In this tutorial, you can learn how to perform these two steps in TVM.
 The whole workflow is illustrated by a matrix multiplication example.
 """
 
 ######################################################################
 # Install dependencies
 # --------------------
-# To use autotvm package in tvm, we need to install some extra dependencies.
+# To use autotvm package in TVM, we need to install some extra dependencies.
 # (change "3" to "2" if you use python2):
 #
 # .. code-block:: bash
 #
 #   pip3 install --user psutil xgboost
 #
-# To make tvm run faster in tuning, it is recommended to use cython
-# as FFI of tvm. In the root directory of tvm, execute
+# To make TVM run faster in tuning, it is recommended to use cython
+# as FFI of TVM. In the root directory of TVM, execute
 # (change "3" to "2" if you use python2):
 #
 # .. code-block:: bash
@@ -61,11 +61,11 @@ from tvm import autotvm
 ######################################################################
 # Step 1:  Define the search space
 # --------------------------------
-# In this section, we will rewrite a deterministic tvm schedule code to a
+# In this section, we will rewrite a deterministic TVM schedule code to a
 # tunable schedule template. You can regard the process of search space definition
-# as the parametrization of our existing schedule code.
+# as the parameterization of our existing schedule code.
 #
-# To begin with, here is how we implement a blocked matrix multiplication in tvm.
+# To begin with, here is how we implement a blocked matrix multiplication in TVM.
 
 # Matmul V0: Constant tiling factor
 def matmul_v0(N, L, M, dtype):
@@ -133,7 +133,7 @@ def matmul_v1(N, L, M, dtype):
 # Here we make four modifications to the previous schedule code and get
 # a tunable "template". We can explain the modifications one by one.
 #
-# 1. Use a decorator to mark this function as a simple template
+# 1. Use a decorator to mark this function as a simple template.
 # 2. Get a config object:
 #    You can regard this :code:`cfg` as an argument of this function but
 #    we obtain it in a different way. With this argument, this function is no longer
@@ -236,7 +236,7 @@ def matmul(N, L, M, dtype):
 # In step 1, we build the search space by extending our old schedule code
 # into a template. The next step is to pick a tuner and explore in this space.
 #
-# Auto-tuners in tvm
+# Auto-tuners in TVM
 # ^^^^^^^^^^^^^^^^^^
 # The job for a tuner can be described by following pseudo code
 #
@@ -288,7 +288,7 @@ logging.getLogger('autotvm').setLevel(logging.DEBUG)
 logging.getLogger('autotvm').addHandler(logging.StreamHandler(sys.stdout))
 
 # There are two steps for measuring a config: build and run.
-# By default, we use all cpu cores to compile program. Then measure them sequentially.
+# By default, we use all CPU cores to compile program. Then measure them sequentially.
 # We measure 5 times and take average to reduce variance.
 measure_option = autotvm.measure_option(
     builder='local',

@@ -19,13 +19,13 @@
 
 Install from Source
 ===================
-This page gives instructions on how to build and install the tvm package from
+This page gives instructions on how to build and install the TVM package from
 scratch on various systems. It consists of two steps:
 
 1. First build the shared library from the C++ codes (`libtvm.so` for linux, `libtvm.dylib` for macOS and `libtvm.dll` for windows).
 2. Setup for the language packages (e.g. Python Package).
 
-To get started, clone tvm repo from github. It is important to clone the submodules along, with ``--recursive`` option.
+To get started, clone TVM repo from github. It is important to clone the submodules along, with ``--recursive`` option.
 
 .. code:: bash
 
@@ -38,6 +38,8 @@ For windows users who use github tools, you can open the git shell, and type the
    git submodule init
    git submodule update
 
+
+.. _build-shared-library:
 
 Build the Shared Library
 ------------------------
@@ -52,18 +54,19 @@ Our goal is to build the shared libraries:
 .. code:: bash
 
     sudo apt-get update
-    sudo apt-get install -y python python-dev python-setuptools gcc libtinfo-dev zlib1g-dev build-essential cmake
+    sudo apt-get install -y python3 python3-dev python3-setuptools gcc libtinfo-dev zlib1g-dev build-essential cmake
 
 The minimal building requirements are
 
 - A recent c++ compiler supporting C++ 11 (g++-4.8 or higher)
 - CMake 3.5 or higher
 - We highly recommend to build with LLVM to enable all the features.
+- If you want to use CUDA, CUDA toolkit version >= 8.0 is required. If you are upgrading from an older version, make sure you purge the older version and reboot after installation.
 - It is possible to build TVM without the LLVM dependency if you only want to use CUDA/OpenCL
 - If you want to use the NNVM compiler, then LLVM is required
 
 We use cmake to build the library.
-The configuration of tvm can be modified by `config.cmake`.
+The configuration of TVM can be modified by `config.cmake`.
 
 
 - First, check the cmake in your system. If you do not have cmake,
@@ -110,8 +113,7 @@ Building on Windows
 ~~~~~~~~~~~~~~~~~~~
 
 TVM support build via MSVC using cmake. The minimum required VS version is **Visual Studio Community 2015 Update 3**.
-In order to generate the VS solution file using cmake,
-make sure you have a recent version of cmake added to your path and then from the tvm directory:
+In order to generate the VS solution file using cmake, make sure you have a recent version of cmake added to your path and then from the TVM directory:
 
 .. code:: bash
 
@@ -159,7 +161,7 @@ Method 1
 
 
 Method 2
-   Install tvm python bindings by `setup.py`:
+   Install TVM python bindings by `setup.py`:
 
    .. code:: bash
 
@@ -179,19 +181,25 @@ Python dependencies
 
    .. code:: bash
 
-       pip install --user numpy decorator attrs
+       pip3 install --user numpy decorator attrs
 
    * If you want to use RPC Tracker
 
    .. code:: bash
 
-       pip install --user tornado
+       pip3 install --user tornado
 
    * If you want to use auto-tuning module
 
    .. code:: bash
 
-       pip install --user tornado psutil xgboost
+       pip3 install --user tornado psutil xgboost
+
+   * If you want to parse Relay text format progams, you must use Python 3 and run the following
+
+   .. code:: bash
+
+       pip3 install --user mypy orderedset antlr4-python3-runtime
 
 
 Install Contrib Libraries
@@ -201,3 +209,28 @@ Install Contrib Libraries
    :maxdepth: 1
 
    nnpack
+
+
+Enable C++ Tests
+----------------
+We use `Google Test <https://github.com/google/googletest>`_ to drive the C++
+tests in TVM. The easiest way to install GTest is from source.
+
+   .. code:: bash
+
+       git clone https://github.com/google/googletest
+       cd googletest
+       mkdir build
+       cd build
+       cmake ..
+       make
+       make install
+
+Now, you'll need to modify ``build/config.cmake`` and change ``set(USE_GTEST
+OFF)`` to ``set(USE_GTEST ON)``.
+
+TVM can then be built `as usual`__.
+
+__ build-shared-library_
+
+After building, the C++ tests can be run with ``make cpptest``.

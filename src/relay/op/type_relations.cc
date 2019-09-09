@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- * 
+ *
  *   http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -24,7 +24,6 @@
  * for type relations.
  */
 #include <tvm/relay/expr.h>
-#include <tvm/relay/logging.h>
 #include <tvm/relay/op.h>
 #include <tvm/ir_pass.h>
 #include <numeric>
@@ -82,11 +81,17 @@ Type ConcreteBroadcast(const TensorType& t1,
   for (; i <= std::min(ndim1, ndim2); ++i) {
     IndexExpr s1 = t1->shape[ndim1 - i];
     IndexExpr s2 = t2->shape[ndim2 - i];
-    if (EqualCheck(s1, s2)) {
-      oshape.push_back(s1);
-    } else if (EqualConstInt(s1, 1)) {
+    if (EqualConstInt(s1, 1)) {
       oshape.push_back(s2);
     } else if (EqualConstInt(s2, 1)) {
+      oshape.push_back(s1);
+    } else if (s1.as<Any>()) {
+      // s1 == 1 || s1 == s2
+      oshape.push_back(s2);
+    } else if (s2.as<Any>()) {
+      // s2 == 1 || s2 == s1
+      oshape.push_back(s1);
+    } else if (EqualCheck(s1, s2)) {
       oshape.push_back(s1);
     } else {
       RELAY_ERROR(
@@ -109,8 +114,8 @@ bool BroadcastRel(const Array<Type>& types,
                   const Attrs& attrs,
                   const TypeReporter& reporter) {
   CHECK_EQ(types.size(), 3);
-  RELAY_LOG(INFO) << "In1:" << types[0] << ",In2:" << types[1]
-                  << ",Out:" << types[2] << std::endl;
+  // DLOG(INFO) << "In1:" << types[0] << ",In2:" << types[1]
+  //                 << ",Out:" << types[2] << std::endl;
   if (auto t0 = ToTensorType(types[0])) {
     if (auto t1 = ToTensorType(types[1])) {
       CHECK_EQ(t0->dtype, t1->dtype);
@@ -127,8 +132,8 @@ bool BroadcastCompRel(const Array<Type>& types,
                       const Attrs& attrs,
                       const TypeReporter& reporter) {
   CHECK_EQ(types.size(), 3);
-  RELAY_LOG(INFO) << "In1:" << types[0] << ",In2:" << types[1]
-                  << ",Out:" << types[2] << std::endl;
+  // DLOG(INFO) << "In1:" << types[0] << ",In2:" << types[1]
+  //                 << ",Out:" << types[2] << std::endl;
   if (auto t0 = ToTensorType(types[0])) {
     if (auto t1 = ToTensorType(types[1])) {
       CHECK_EQ(t0->dtype, t1->dtype);
