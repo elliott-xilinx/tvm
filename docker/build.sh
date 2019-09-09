@@ -98,7 +98,7 @@ WORKSPACE="${WORKSPACE:-${SCRIPT_DIR}/../}"
 BUILD_TAG="${BUILD_TAG:-tvm}"
 
 # Determine the docker image name
-DOCKER_IMG_NAME="${BUILD_TAG}.${CONTAINER_TYPE}"
+DOCKER_IMG_NAME="${BUILD_TAG}.${CONTAINER_TYPE}.${USER}"
 
 # Under Jenkins matrix build, the build tag may contain characters such as
 # commas (,) and equal signs (=), which are not valid inside docker image names.
@@ -119,7 +119,7 @@ echo ""
 
 # Build the docker container.
 echo "Building container (${DOCKER_IMG_NAME})..."
-docker build -t ${DOCKER_IMG_NAME} \
+docker build --network=host -t ${DOCKER_IMG_NAME} \
     -f "${DOCKERFILE_PATH}" "${DOCKER_CONTEXT_PATH}"
 
 # Check docker build status

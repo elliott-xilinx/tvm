@@ -1,4 +1,6 @@
-import os
+import warnings
+warnings.filterwarnings("ignore",category=FutureWarning)
+
 #from ipywidgets import interact
 
 import tvm
@@ -9,22 +11,23 @@ import tvm.relay as relay
 import numpy as np
 
 import os
+import shutil
 
-# DEBUG
-#import messages
-#messages.DEBUG(True)
-#import pdb
 
 from xfdnn.tools.compile.bin.xfdnn_compiler_tvm import TVMCompiler
 
 ##################################################
 # MESSAGE SETTINGS
 ##################################################
+# DEBUG
+#import messages
+#messages.DEBUG(True)
+#import pdb
+
+# Enable for XDNN Runtime info...
+#os.environ['XDNN_VERBOSE'] = "1"
+
 np.set_printoptions(precision=4, suppress=True)
-
-### Enable for XDNN Runtime info...
-###os.environ['XDNN_VERBOSE'] = "1"
-
 
 ##################################################
 # MODEL SETTINGS
@@ -59,14 +62,14 @@ def select_model(MODEL):
 
 # SELECT MODEL
 #select_model( 'Caffe-GoogLeNet_bvlc_without_lrn' ) # NOT WORKING
-select_model( 'Tensorflow-SLIM-InceptionV1'      )
+###select_model( 'Tensorflow-SLIM-InceptionV1'      )
 #select_model( 'Tensorflow-SLIM-VGG16'            )
 #select_model( 'Tensorflow-SLIM-ResNet_V1_50'     )
 #select_model( 'Tensorflow-SLIM-ResNet_V1_101'    )
 #select_model( "Tensorflow-SLIM-VGG19"            )
 #select_model( "Tensorflow-SLIM-ResNet_V2_152"    )
 #select_model( "MXNet-GLUON-ResNet_V1_18" ) 
-##select_model( "MXNet-GLUON-ResNet_V1_50" )
+select_model( "MXNet-GLUON-ResNet_V1_50" )
 #select_model( "MXNet-GLUON-VGG_13"    )
 
 print("Framework: {}".format(framework))
@@ -155,14 +158,22 @@ def predict(desc,tensor, val_labels):
 def softmax(x):
     return np.exp(x - np.max(x, axis=1, keepdims=True)) / np.expand_dims(np.sum(np.exp(x - np.max(x, axis=1, keepdims=True)), axis=1), axis=1)
 
+
 ##################################################
 # TVM COMPILATION/PARTITIONING
 ##################################################
-
+model_dir = "tvm_fpga_cpu"
+try:
+    if False and os.path.isdir(model_dir):
+        shutil.rmtree(model_dir)
+    os.mkdir(model_dir)
+except:
+    pass
+    
 config = {
-    'netcfg': "work/tvm_compiler.json",
-    'weights': "work/weights_data.h5",
-    'quantizecfg': "work/tvm_quantizer.json"
+    'netcfg': model_dir+"/tvm_compiler.json",
+    'weights': model_dir+"/weights_data.h5",
+    'quantizecfg': model_dir+"/tvm_quantizer.json"
 }
 
 # Initializes TVM Compiler for XDNN
@@ -255,23 +266,20 @@ cpu_nontvm_res = xfgraph.run(inputs,
 #print("Max Category ID:",np.argmax(cpu_res[0]))
 #predict("CPU ONLY (NON-TVM)", cpu_nontvm_res[0], imagenet_val_labels)
 
+
+
 ##################################################
 # CPU TVM RUN
 ##################################################
 
-# RECONSTRUCT AND FUSE THE GRAPH FOR XDNN
-import contrib_xdnn
-from graph import graph_reconst
-
 # SETUP AND COMPILE THE RECONSTRUCTED NNVM GRAPH
 target, target_host = 'llvm', 'llvm'
-params_shapes = dict((k, params[k].shape) for k in params)
-params_dtypes = dict((k, params[k].dtype) for k in params)
+#params_dtypes = dict((k, params[k].dtype) for k in params)
 input_name    = list(data_shapes.keys())[0]
 shape_dict    = data_shapes
 input_type    = 'float32'
 dtype_dict    = {input_name: input_type }
-dtype_dict.update(params_dtypes)
+##dtype_dict.update(params_dtypes)
 
 graph, lib, params = nnvm.compiler.build(
     compute_graph, target, shape_dict, dtype_dict,
@@ -289,10 +297,17 @@ m = graph_runtime.create(graph, lib, ctx)
 #m.set_input(Placeholder=(np.transpose(batch_array,(0,2,3,1))))
 
 # SAVE NNVM/TVM OUTPUT
-lib.export_library("tvm_cpu.so")
-with open("tvm_cpu.json","w") as f:
+model_dir = "tvm_cpu"
+try:
+    if False and os.path.isdir(model_dir):
+        shutil.rmtree(model_dir)
+    os.mkdir(model_dir)
+except:
+    pass
+lib.export_library(model_dir+"/tvm_cpu.so")
+with open(model_dir+"/tvm_cpu.json","w") as f:
     f.write(graph.json())
-with open("tvm_cpu.params","wb") as f:
+with open(model_dir+"/tvm_cpu.params","wb") as f:
     f.write(nnvm.compiler.save_param_dict(params))
 
 # RUN
@@ -301,9 +316,6 @@ m.set_input(**params)
 
 m.run()
 cpu_tvm_output = m.get_output(0)
-
-
-
 
 
 ##################################################
@@ -349,10 +361,11 @@ m = graph_runtime.create(graph, lib, ctx)
 
 
 # SAVE NNVM/TVM OUTPUT
-lib.export_library("tvm_fpga_cpu.so")
-with open("tvm_fpga_cpu.json","w") as f:
+model_dir = "tvm_fpga_cpu"
+lib.export_library(model_dir+"/tvm_fpga_cpu.so")
+with open(model_dir+"/tvm_fpga_cpu.json","w") as f:
     f.write(graph.json())
-with open("tvm_fpga_cpu.params","wb") as f:
+with open(model_dir+"/tvm_fpga_cpu.params","wb") as f:
     f.write(nnvm.compiler.save_param_dict(params))
 
             
