@@ -1,0 +1,77 @@
+FROM ubuntu:16.04
+
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+ENV PATH /opt/conda/bin:$PATH
+
+RUN apt-get update && apt-get install -y --no-install-recommends\
+	build-essential\
+ 	ca-certificates\
+    bzip2\ 
+    curl\
+    binutils\
+ 	cmake\
+	sudo\
+ 	wget\
+ 	git\
+ 	vim\
+    graphviz\
+	libboost-all-dev
+
+RUN rm -rf /var/lib/apt/lists/*
+
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda2-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh && \
+    /bin/bash ~/miniconda.sh -b -p /opt/conda && \
+    rm ~/miniconda.sh && \
+    ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
+    echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    echo "conda activate base" >> ~/.bashrc && \
+    conda upgrade --all && \
+    conda install conda-build conda-verify && \
+    conda clean -ya && \
+    . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate base
+
+#RUN conda install --download-only cmake make zlib && \
+#    conda install --download-only -c numba llvmdev=8.0.0
+#conda install --download-only pytest scipy numpy=1.11 cython decorator python=3.7
+    
+RUN conda --version
+
+COPY conda-channel /conda-channel
+#RUN /opt/conda/bin/conda install conda-build && conda update conda && conda update conda-build && 
+RUN conda install conda-build && conda update conda && conda update conda-build && conda index /conda-channel
+
+RUN conda install -y \
+    python=3.7 \
+    xip \
+    glibc_version_header \
+    caffe_decent \
+    pydot \
+    jupyter \
+    cppzmq \
+    mkl \
+    mkl-include \
+    h5py \
+    pyzmq \
+    -c file://conda-channel/ \
+    -c defaults \
+    -c conda-forge/label/gcc7 \
+    -c conda-forge
+#RUN apt-get update && apt-get install -y libturbojpeg lsb-core gdb
+
+COPY install/ubuntu_install_llvm.sh /install/ubuntu_install_llvm.sh
+RUN bash /install/ubuntu_install_llvm.sh
+
+RUN pip install tensorflow==1.13.1 onnx==1.5.0
+
+#ARG user
+#ARG uid
+#ARG gid
+#ARG gname
+#RUN groupadd $gname -g $gid -f && useradd -g $gname -ms /bin/bash $user -u $uid && usermod -aG sudo $user
+#RUN passwd -d $user
+
+WORKDIR /workspace
+RUN chmod -R a+w /workspace
+
+#CMD [ "/bin/bash" ]

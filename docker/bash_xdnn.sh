@@ -78,7 +78,7 @@ ${DOCKER_BINARY} run --rm --pid=host\
     --privileged=true \
     -v ${WORKSPACE}:/workspace \
     -v ${SCRIPT_DIR}:/docker \
-    -v /opt:/opt \
+    -v /opt/xilinx:/opt/xilinx \
     -v /dev:/dev \
     -w /workspace \
     -e "CI_BUILD_HOME=/workspace" \

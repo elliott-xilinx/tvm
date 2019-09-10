@@ -1,38 +1,10 @@
 #!/usr/bin/env bash
 
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
+# Copy {MLSUITE_ROOT}/conda/conda-channel
 
-#
-# Execute command within a docker container
-#
-# Usage: build.sh <CONTAINER_TYPE> [--dockerfile <DOCKERFILE_PATH>] [-it]
-#                    <COMMAND>
-#
-# CONTAINER_TYPE: Type of the docker container used the run the build: e.g.,
-#                 (cpu | gpu)
-#
-# DOCKERFILE_PATH: (Optional) Path to the Dockerfile used for docker build.  If
-#                  this optional value is not supplied (via the --dockerfile
-#                  flag), will use Dockerfile.CONTAINER_TYPE in default
-#
-# COMMAND: Command to be executed in the docker container
-#
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+cp -r $SCRIPT_DIR/../../MLsuite/conda/conda-channel $SCRIPT_DIR
 
 # Get the command line arguments.
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
@@ -98,7 +70,7 @@ WORKSPACE="${WORKSPACE:-${SCRIPT_DIR}/../}"
 BUILD_TAG="${BUILD_TAG:-tvm}"
 
 # Determine the docker image name
-DOCKER_IMG_NAME="${BUILD_TAG}.${CONTAINER_TYPE}"
+DOCKER_IMG_NAME="${BUILD_TAG}.${CONTAINER_TYPE}.${USER}"
 
 # Under Jenkins matrix build, the build tag may contain characters such as
 # commas (,) and equal signs (=), which are not valid inside docker image names.
@@ -147,3 +119,5 @@ ${DOCKER_BINARY} run --rm --pid=host \
     ${DOCKER_IMG_NAME} \
     bash --login docker/with_the_same_user \
     ${COMMAND[@]}
+
+rm -rf $SCRIPT_DIR/conda-channel
