@@ -13,7 +13,7 @@ import os
 # DEBUG
 #import messages
 #messages.DEBUG(True)
-#import pdb
+import pdb
 
 from xfdnn.tools.compile.bin.xfdnn_compiler_tvm import TVMCompiler
 
@@ -59,7 +59,7 @@ def select_model(MODEL):
 
 # SELECT MODEL
 #select_model( 'Caffe-GoogLeNet_bvlc_without_lrn' ) # NOT WORKING
-select_model( 'Tensorflow-SLIM-InceptionV1'      )
+#select_model( 'Tensorflow-SLIM-InceptionV1'      )
 #select_model( 'Tensorflow-SLIM-VGG16'            )
 #select_model( 'Tensorflow-SLIM-ResNet_V1_50'     )
 #select_model( 'Tensorflow-SLIM-ResNet_V1_101'    )
@@ -68,6 +68,10 @@ select_model( 'Tensorflow-SLIM-InceptionV1'      )
 #select_model( "MXNet-GLUON-ResNet_V1_18" ) 
 ##select_model( "MXNet-GLUON-ResNet_V1_50" )
 #select_model( "MXNet-GLUON-VGG_13"    )
+#select_model("ONNX-PyTorch_AlexNet")
+select_model("ONNX-PyTorch_ResNet18")
+#select_model("ONNX-PyTorch_ResNet50")
+#select_model("ONNX-PyTorch_GoogLeNet")
 
 print("Framework: {}".format(framework))
 print("Model path: {}".format(model_path))
@@ -175,7 +179,7 @@ xdnn_tvm_compiler = TVMCompiler(
 from xfdnn.tools.io import load_model_from_file
 
 # READING MODEL USING NNVM/RELAY
-frontend = 'NNVM'
+frontend = 'Relay'
 if frontend == 'NNVM':
     
     compute_graph, params, data_layout = \
@@ -187,14 +191,18 @@ if frontend == 'NNVM':
                                      #output_op = "InceptionV1/Logits/AvgPool_0a_7x7/AvgPool",
                                      #output_op = "elemwise_add7",
                                      data_layout=data_layout) #from_nnvm output_op
-###elif frontend == 'Relay':
-###    mod, params, data_layout = \
-###        load_model_from_file(frontend, framework)(model_path, data_shapes, 
-###                                                  opt_model_path)
-###    xfgraph = xdnn_tvm_compiler.from_relay(mod, params, 
-###                                      data_layout=data_layout,
-###                                      add_output_layers=add_output_layers)
 
+elif frontend == 'Relay':
+    mod, params, data_layout = \
+                               load_model_from_file(frontend, framework)(model_path, data_shapes, 
+                                                                         opt_model_path)
+    #pdb.set_trace()
+    xfgraph = xdnn_tvm_compiler.from_relay(mod, params, 
+                                      data_layout=data_layout,
+                                      add_output_layers=add_output_layers)
+    
+    
+#pdb.set_trace()
 # xfgraph is basically our XDNN IR
 xfgraph.visualize('tvm_graph.png')
 
@@ -258,7 +266,7 @@ cpu_nontvm_res = xfgraph.run(inputs,
 ##################################################
 # CPU TVM RUN
 ##################################################
-
+pdb.set_trace()
 # RECONSTRUCT AND FUSE THE GRAPH FOR XDNN
 import contrib_xdnn
 from graph import graph_reconst

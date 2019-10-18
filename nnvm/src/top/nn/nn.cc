@@ -745,14 +745,14 @@ NNVM_REGISTER_OP(l2_normalize)
 .set_attr<FCorrectLayout>("FCorrectLayout", ElemwiseArbitraryLayout<1, 1>)
 .set_support_level(1);
 
-DMLC_REGISTER_PARAMETER(XDNNParam);
+DMLC_REGISTER_PARAMETER(EXTParam);
 
-inline bool XDNNInferShape(const nnvm::NodeAttrs& attrs,
+inline bool EXTInferShape(const nnvm::NodeAttrs& attrs,
 			   std::vector<TShape>* in_shape,
 			   std::vector<TShape>* out_shape) {
   TShape dshape = (*in_shape)[0];
   //TShape oshape = dshape;
-  const XDNNParam& param = nnvm::get<XDNNParam>(attrs.parsed);
+  const EXTParam& param = nnvm::get<EXTParam>(attrs.parsed);
 
   
   TShape oshape ({param.output_shape[0],
@@ -766,13 +766,13 @@ inline bool XDNNInferShape(const nnvm::NodeAttrs& attrs,
   return true;
 }
   
-  NNVM_REGISTER_OP(xdnn)
-  .describe("xdnn OP that runs fused operation using the xdnn runtime")
+  NNVM_REGISTER_OP(ext)
+  .describe("external OP that runs fused operation using the external runtime")
   .add_argument("data","4D Tensor", "Input data")
   //.add_argument("weights","4D Tensor", "Weights")
   //.add_argument("bias","4D Tensor", "Bias")
-  .set_attr_parser(ParamParser<XDNNParam>)
-  .set_attr<FInferShape>("FInferShape", XDNNInferShape)
+  .set_attr_parser(ParamParser<EXTParam>)
+  .set_attr<FInferShape>("FInferShape", EXTInferShape)
   .set_num_inputs(kVarg)
   .set_num_outputs(1);
 

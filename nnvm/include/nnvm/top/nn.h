@@ -551,19 +551,22 @@ struct L2NormalizeParam : public dmlc::Parameter<L2NormalizeParam> {
 };
 
 
-struct XDNNParam : public dmlc::Parameter<XDNNParam> {
+struct EXTParam : public dmlc::Parameter<EXTParam> {
   std::string output_layout;
-  std::string json_path;
+  std::string path;
   Tuple<int> output_shape;
-  //const std::vector<int> vtemp;
+  std::string model_name;
 
-  DMLC_DECLARE_PARAMETER(XDNNParam) {
+
+  DMLC_DECLARE_PARAMETER(EXTParam) {
     DMLC_DECLARE_FIELD(output_layout)
       .describe("Layout of the output node");
-    DMLC_DECLARE_FIELD(json_path)
+    DMLC_DECLARE_FIELD(path)
       .describe("Path to the xdnn compiler generated files");
     DMLC_DECLARE_FIELD(output_shape)
       .describe("Shape of the output node");
+    DMLC_DECLARE_FIELD(model_name)
+      .describe("Model name");
     //DMLC_DECLARE_FIELD(vtemp).set_default(0)
     //  .describe("vtemp");
 

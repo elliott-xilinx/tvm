@@ -605,6 +605,25 @@ struct DeformableConv2DAttrs : public tvm::AttrsNode<DeformableConv2DAttrs> {
   }
 };
 
+// TOOD: CHANGE NAME OF ATTRS AND JSON_PATH
+ struct EXTAttrs : public tvm::AttrsNode<EXTAttrs> {
+   std::string output_layout;
+   std::string path;
+   Array<IndexExpr>  output_shape;
+   std::string model_name;
+    
+   TVM_DECLARE_ATTRS(EXTAttrs, "relay.attrs.XDNNAttrs") {
+    TVM_ATTR_FIELD(output_layout)
+      .describe("Layout of the output node");
+    TVM_ATTR_FIELD(path)
+      .describe("Path to the xdnn compiler generated files");
+    TVM_ATTR_FIELD(output_shape)
+      .describe("Shape of the output node");
+    TVM_ATTR_FIELD(model_name)
+      .describe("model name");
+   }
+};
+ 
 }  // namespace relay
 }  // namespace tvm
 #endif  // TVM_RELAY_ATTRS_NN_H_

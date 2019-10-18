@@ -37,6 +37,7 @@
 #include "../op_common.h"
 #include "nn.h"
 
+
 namespace tvm {
 namespace relay {
 
@@ -536,7 +537,7 @@ The whole array is rescaled by ``1/(1-p)`` to keep the expected sum of the input
 
 )code" TVM_ADD_FILELINE)
 .set_attrs_type_key("relay.attrs.DropoutAttrs")
-.set_num_inputs(1)
+//.set_num_inputs(1)
 .add_argument("data", "Tensor", "Input to which dropout will be applied.")
 .set_support_level(1)
 .set_attr<FInferCorrectLayout>("FInferCorrectLayout", ElemwiseArbitraryLayout)
@@ -747,5 +748,86 @@ are data in batch.
 .add_type_rel("BatchMatmul", BatchMatmulRel);
 
 
+
+  TVM_REGISTER_NODE_TYPE(EXTAttrs);
+  
+// relay.nn.ext
+bool EXTRel(const Array<Type>& types,
+                    int num_inputs,
+                    const Attrs& attrs,
+                    const TypeReporter& reporter) {
+
+  const auto* data = types[0].as<TupleTypeNode>();
+  const auto& first = Downcast<TensorType>(data->fields[0]);
+
+  if (data == nullptr) {
+    CHECK(types[0].as<IncompleteTypeNode>())
+      << "cast: expect input type to be TupleType but get "
+      << types[0];
+    return false;
+  }
+  
+  const auto* param = attrs.as<EXTAttrs>();
+  CHECK(param != nullptr);
+
+  
+  Array<tvm::Expr> oshape  = {param->output_shape[0],
+			      param->output_shape[1],
+			      param->output_shape[2],
+			      param->output_shape[3]};
+  
+  
+  // assign output type
+  reporter->Assign(types[1], TensorTypeNode::make(oshape, first->dtype));
+
+  return true;
+}
+
+
+  Expr MakeEXT(Expr data,
+		std::string output_layout,
+		std::string path,
+		std::string model_name,
+		Array<IndexExpr> output_shape) {
+    auto attrs = make_node<EXTAttrs>();
+    attrs->output_layout = std::move(output_layout);
+    attrs->path          = std::move(path         );
+    attrs->output_shape  = std::move(output_shape );
+    attrs->model_name    = std::move(model_name   );
+    
+  static const Op& op = Op::Get("nn.ext");
+
+
+  return CallNode::make(op, {data}, Attrs(attrs), {});
+  //return CallNode::make(op, {data}, Attrs(), {});
+
+}
+
+  
+
+
+
+  TVM_REGISTER_API("relay.op.nn._make.ext")
+.set_body_typed(MakeEXT);
+
+  
+
+  RELAY_REGISTER_OP("nn.ext")
+  .describe(R"code(external OP that runs fused operation using the external runtime)code" TVM_ADD_FILELINE)
+  .set_attrs_type_key("relay.attrs.EXTAttrs")
+  .set_num_inputs(1)
+  .add_argument("data","Tensor", "List of Input Tensors")
+  .set_support_level(15)
+  .add_type_rel("EXT",EXTRel)
+  .set_attr<TOpPattern>("TOpPattern",kInjective);
+  
+//.set_attr<FTVMCompute>("FTVMCompute", [](const Attrs& attrs,
+//                                         const Array<Tensor>& inputs,
+//                                         const Type& out_type,
+//                                         const Target& target) {
+//  return Array<Tensor>{ topi::relu(inputs[0], 0.0f) };
+//});
+
 }  // namespace relay
 }  // namespace tvm
+
