@@ -551,14 +551,14 @@ struct L2NormalizeParam : public dmlc::Parameter<L2NormalizeParam> {
 };
 
 
-struct EXTParam : public dmlc::Parameter<EXTParam> {
+struct ACCELParam : public dmlc::Parameter<ACCELParam> {
   std::string output_layout;
   std::string path;
   Tuple<int> output_shape;
   std::string model_name;
 
 
-  DMLC_DECLARE_PARAMETER(EXTParam) {
+  DMLC_DECLARE_PARAMETER(ACCELParam) {
     DMLC_DECLARE_FIELD(output_layout)
       .describe("Layout of the output node");
     DMLC_DECLARE_FIELD(path)

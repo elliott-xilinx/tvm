@@ -1201,15 +1201,16 @@ def deformable_conv2d(data,
 
 
 
-def xdnn (data,
-           output_layout,
-           json_path,
-           output_shape):
+def accel (data,
+         output_layout,
+         path,
+         output_shape,
+         model_name ):
     import pdb
-    pdb.set_trace()
+    #pdb.set_trace()
 
     data = list(data)
-    return _make.xdnn(Tuple(data),output_layout,json_path,output_shape)
+    return _make.accel(Tuple(data),output_layout,path,model_name, output_shape)
     #return _make.xdnn(data)
 
     

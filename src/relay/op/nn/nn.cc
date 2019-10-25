@@ -749,10 +749,10 @@ are data in batch.
 
 
 
-  TVM_REGISTER_NODE_TYPE(EXTAttrs);
+  TVM_REGISTER_NODE_TYPE(ACCELAttrs);
   
-// relay.nn.ext
-bool EXTRel(const Array<Type>& types,
+// relay.nn.accel
+bool ACCELRel(const Array<Type>& types,
                     int num_inputs,
                     const Attrs& attrs,
                     const TypeReporter& reporter) {
@@ -767,7 +767,7 @@ bool EXTRel(const Array<Type>& types,
     return false;
   }
   
-  const auto* param = attrs.as<EXTAttrs>();
+  const auto* param = attrs.as<ACCELAttrs>();
   CHECK(param != nullptr);
 
   
@@ -784,18 +784,18 @@ bool EXTRel(const Array<Type>& types,
 }
 
 
-  Expr MakeEXT(Expr data,
+  Expr MakeACCEL(Expr data,
 		std::string output_layout,
 		std::string path,
 		std::string model_name,
 		Array<IndexExpr> output_shape) {
-    auto attrs = make_node<EXTAttrs>();
+    auto attrs = make_node<ACCELAttrs>();
     attrs->output_layout = std::move(output_layout);
     attrs->path          = std::move(path         );
     attrs->output_shape  = std::move(output_shape );
     attrs->model_name    = std::move(model_name   );
     
-  static const Op& op = Op::Get("nn.ext");
+  static const Op& op = Op::Get("nn.accel");
 
 
   return CallNode::make(op, {data}, Attrs(attrs), {});
@@ -807,18 +807,18 @@ bool EXTRel(const Array<Type>& types,
 
 
 
-  TVM_REGISTER_API("relay.op.nn._make.ext")
-.set_body_typed(MakeEXT);
+  TVM_REGISTER_API("relay.op.nn._make.accel")
+.set_body_typed(MakeACCEL);
 
   
 
-  RELAY_REGISTER_OP("nn.ext")
-  .describe(R"code(external OP that runs fused operation using the external runtime)code" TVM_ADD_FILELINE)
-  .set_attrs_type_key("relay.attrs.EXTAttrs")
+  RELAY_REGISTER_OP("nn.accel")
+  .describe(R"code(acceleration OP that runs fused operation using the accelration runtime)code" TVM_ADD_FILELINE)
+  .set_attrs_type_key("relay.attrs.ACCELAttrs")
   .set_num_inputs(1)
   .add_argument("data","Tensor", "List of Input Tensors")
   .set_support_level(15)
-  .add_type_rel("EXT",EXTRel)
+  .add_type_rel("ACCEL",ACCELRel)
   .set_attr<TOpPattern>("TOpPattern",kInjective);
   
 //.set_attr<FTVMCompute>("FTVMCompute", [](const Attrs& attrs,

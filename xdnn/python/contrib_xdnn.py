@@ -14,28 +14,28 @@ import xfdnn.rt.xdnn as xdnn
 import xfdnn.rt.xdnn_io as xdnn_io
 #from xfdnn.rt import xdnn, xdnn_io
 
-@reg.register_schedule("ext", level=15)
-def schedule_ext(attrs,outputs,target):
+@reg.register_schedule("accel", level=15)
+def schedule_accel(attrs,outputs,target):
     #pdb.set_trace()
-    ##    print("-- debug: ext schedule")
+    ##    print("-- debug: accel schedule")
     return tvm.create_schedule([x.op for x in outputs])
 
 
     
-@reg.register_compute("ext", level=15)
-def compute_ext(attrs,inputs,outputs):
+@reg.register_compute("accel", level=15)
+def compute_accel(attrs,inputs,outputs):
     #pdb.set_trace()
-    ##    print ("-- debug: ext compute")
+    ##    print ("-- debug: accel compute")
     
-    op = 'ext'
-    name = 'ext0'
+    op = 'accel'
+    name = 'accel0'
     attrs_dict = { k: attrs[k] for k in attrs.keys() }
     input_names = [inpt.op.name for inpt in inputs]
     in_shapes = [[int(i) for i in inpt.shape] for inpt in inputs]
     out_shapes = [[int(i) for i in outputs[0].shape]]
     
     # EXTERNAL FUNCTION TO RUN THE FUSED OPERATION
-    out = tvm.extern(outputs[0].shape, inputs, lambda ins, outs: tvm.call_packed('tvm.ext.ext_fused', attrs['path'], attrs['output_layout'], attrs['model_name'], outs[0], *ins ), name=name)
+    out = tvm.extern(outputs[0].shape, inputs, lambda ins, outs: tvm.call_packed('tvm.accel.accel_fused', attrs['path'], attrs['output_layout'], attrs['model_name'], outs[0], *ins ), name=name)
     
       
     ##    print(out.shape)
@@ -45,21 +45,21 @@ def compute_ext(attrs,inputs,outputs):
     
 
    
-@op.register_schedule("nn.ext", level=15)
-def schedule_ext(attrs,outputs,target):
+@op.register_schedule("nn.accel", level=15)
+def schedule_accel(attrs,outputs,target):
 
-    print("-- debug: ext schedule")
+    print("-- debug: accel schedule")
     return tvm.create_schedule([x.op for x in outputs])
 
 
 
-@op.register_compute("nn.ext", level=15)
-def compute_ext(attrs,inputs,outputs, target):
+@op.register_compute("nn.accel", level=15)
+def compute_accel(attrs,inputs,outputs, target):
     #pdb.set_trace()
-    print ("-- debug: ext compute")
+    print ("-- debug: accel compute")
     #pdb.set_trace()
-    op = 'ext'
-    name = 'ext0'
+    op = 'accel'
+    name = 'accel0'
     #attrs_dict = { k: attrs[k] for k in attrs.keys() }
     #input_names = [inpt.op.name for inpt in inputs]
     #in_shapes = [[int(i) for i in inpt.shape] for inpt in inputs]
@@ -69,12 +69,12 @@ def compute_ext(attrs,inputs,outputs, target):
 
     
     # EXTERNAL FUNCTION TO RUN THE FUSED OPERATION
-    out = tvm.extern(outputs.shape, inputs, lambda ins, outs: tvm.call_packed('tvm.ext.ext_fused', attrs.path,attrs.output_layout, attrs.model_name, outs[0], *ins ), name=name)
+    out = tvm.extern(outputs.shape, inputs, lambda ins, outs: tvm.call_packed('tvm.accel.accel_fused', attrs.path,attrs.output_layout, attrs.model_name, outs[0], *ins ), name=name)
 
 
     # TEST MULTI OUTPUT
     #out_shapes = [tuple(tensor.shape) for tensor in outputs.fields]
-    #out = tvm.extern(out_shapes, inputs, lambda ins, outs: tvm.call_packed('tvm.ext.ext_fused', attrs.path,attrs.output_layout, outs, *ins ), name=name)
+    #out = tvm.accelern(out_shapes, inputs, lambda ins, outs: tvm.call_packed('tvm.accel.accel_fused', attrs.path,attrs.output_layout, outs, *ins ), name=name)
       
     ##    print(out.shape)
     
@@ -83,8 +83,8 @@ def compute_ext(attrs,inputs,outputs, target):
     
     
 # TODO: ADD MODEL NAME FOR NNVM
-@tvm.register_func("tvm.ext.ext_fused")
-def ext_fused(graph_path, output_layout, model_name, out, *ins ):
+@tvm.register_func("tvm.accel.accel_fused")
+def accel_fused(graph_path, output_layout, model_name, out, *ins ):
 
     #pdb.set_trace()
     # TEMP

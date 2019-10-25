@@ -45,7 +45,7 @@ def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count):
 # AND CREATE A NEW NNVM GRAPH
 def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=None): 
     node_map={}
-    ext_inputs = []
+    accel_inputs = []
 
     compiler_json_file = path + model_name + "_compiler.json"
     with open(compiler_json_file) as json_file:
@@ -85,19 +85,19 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
             for layer in graph_outputs:
                 layer_name = layer['previous_layers'][0]
                 if node_name == layer_name:
-                    # CREATE EXT NODE
+                    # CREATE ACCEL NODE
                     if output_layout == 'NHWC':
                         output_shape = (1,compiler_shape_output[2],compiler_shape_output[3],compiler_shape_output[1])
                     else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
                         output_shape = (1,compiler_shape_output[1],compiler_shape_output[2],compiler_shape_output[3])   
 
-                    new_entry = sym.ext(*ext_inputs, path=path, output_shape=output_shape, output_layout = output_layout, model_name = model_name)
+                    new_entry = sym.accel(*accel_inputs, path=path, output_shape=output_shape, output_layout = output_layout, model_name = model_name)
                     node_map[nid] = new_entry
         else:
                     
             if op_name == "null":
                 new_entry = nnvm.symbol.Variable(node_name)
-                ext_inputs.append(new_entry)
+                accel_inputs.append(new_entry)
             else:
                 children = [node_map[e[0]] for e in node["inputs"]]
                 new_entry = get_clone(children, op_name, node_name, attrs)
@@ -304,7 +304,7 @@ def reconst_graph(mod, path, output_layout, output_layers=None):
 
 
 @relay.transform.module_pass(opt_level=4)
-class EXTModule:
+class ACCELModule:
 
     def __init__(self, path, output_layout, model_name, output_layers=None):
         self.path     = path
@@ -342,7 +342,6 @@ class EXTModule:
         input_list = [self.extract_hash(n,'input_name') for n in graph_inputs]
     
     
-        #pdb.set_trace()
         expr = mod.functions[mod.get_global_var('main')]
         expr = expr.body
         #traverse(expr)
@@ -364,6 +363,7 @@ class EXTModule:
         return mod
 
     def extract_hash(self,name, key):
+        #pdb.set_trace()
         if key == 'input_name':
             val = name[key].split('-')
         else:
@@ -372,7 +372,11 @@ class EXTModule:
         try:
             return int(val[0])
         except (ValueError):
-            return int(val[1])
+            #pdb.set_trace()
+            if len(val) == 1:
+                return val[0]
+            else:
+                return int(val[1])
 
 
 
@@ -406,11 +410,15 @@ class EXTModule:
         
         elif (isinstance(expr,tvm.relay.expr.Var)):
             print(expr.name_hint)
-            #pdb.set_trace()
             try:
                 input_name = int(expr.name_hint)
             except (ValueError):
-                input_name = None
+                if expr.name_hint == 'data':
+                    pdb.set_trace()
+                    input_name = 'data'
+                else:
+                    input_name = None
+
             if (hash(expr) in input_list or input_name in input_list):
                 print("returning %s expr" %(expr.name_hint))
                 return expr
@@ -448,7 +456,7 @@ class EXTModule:
                     else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
                         output_shape = (1,output_shape[1],output_shape[2],output_shape[3])   
 
-                    op = relay.nn.ext([input_node],output_layout=output_layout,path=path,model_name = model_name, output_shape=output_shape)
+                    op = relay.nn.accel([input_node],output_layout=output_layout,path=path,model_name = model_name, output_shape=output_shape)
                 
                     return op
                 
@@ -490,7 +498,7 @@ class EXTModule:
 
                     if (isinstance(node, tvm.relay.expr.Call)):
                         if (node.op == output_node.op or
-                            output_node.op.name == 'nn.ext'):
+                            output_node.op.name == 'nn.accel'):
                             children.append(output_node)
                         else:
                             children.append(node)

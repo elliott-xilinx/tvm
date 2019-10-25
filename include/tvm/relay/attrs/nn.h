@@ -606,13 +606,13 @@ struct DeformableConv2DAttrs : public tvm::AttrsNode<DeformableConv2DAttrs> {
 };
 
 // TOOD: CHANGE NAME OF ATTRS AND JSON_PATH
- struct EXTAttrs : public tvm::AttrsNode<EXTAttrs> {
+ struct ACCELAttrs : public tvm::AttrsNode<ACCELAttrs> {
    std::string output_layout;
    std::string path;
    Array<IndexExpr>  output_shape;
    std::string model_name;
     
-   TVM_DECLARE_ATTRS(EXTAttrs, "relay.attrs.XDNNAttrs") {
+   TVM_DECLARE_ATTRS(ACCELAttrs, "relay.attrs.ACCELAttrs") {
     TVM_ATTR_FIELD(output_layout)
       .describe("Layout of the output node");
     TVM_ATTR_FIELD(path)

@@ -23,7 +23,7 @@ from xfdnn.tools.compile.bin.xfdnn_compiler_tvm import TVMCompiler
 np.set_printoptions(precision=4, suppress=True)
 
 ### Enable for XDNN Runtime info...
-###os.environ['XDNN_VERBOSE'] = "1"
+os.environ['XDNN_VERBOSE'] = "0"
 
 
 ##################################################
@@ -66,14 +66,26 @@ def select_model(MODEL):
 #select_model( "Tensorflow-SLIM-VGG19"            )
 #select_model( "Tensorflow-SLIM-ResNet_V2_152"    )
 #select_model( "MXNet-GLUON-ResNet_V1_18" ) 
-##select_model( "MXNet-GLUON-ResNet_V1_50" )
+#select_model( "MXNet-GLUON-ResNet_V1_50" )
 #select_model( "MXNet-GLUON-VGG_13"    )
+
 #select_model("ONNX-PyTorch_AlexNet")
-select_model("ONNX-PyTorch_ResNet18")
+#select_model("ONNX-PyTorch_ResNet18")
 #select_model("ONNX-PyTorch_ResNet50")
 #select_model("ONNX-PyTorch_GoogLeNet")
+#select_model("ONNX-PyTorch_ResNet34")
+select_model("ONNX-PyTorch_ResNet101")
+#select_model("ONNX-PyTorch_ResNet152")
+#select_model("ONNX-PyTorch_VGG11")
+#select_model("ONNX-PyTorch_SqueezeNet1_0")
+#select_model("ONNX-PyTorch_DenseNet169")
+#select_model("ONNX-PyTorch_DenseNet161")
+#select_model("")
+#select_model("")
 
-print("Framework: {}".format(framework))
+
+
+
 print("Model path: {}".format(model_path))
 print("Optional model path: {}".format(opt_model_path))
 print("Shapes: {}".format(data_shapes))
@@ -97,11 +109,7 @@ with open('/workspace/MLsuite/notebooks/imagenet-val/val_map.txt') as f:
     imagenet_val_list = [line.strip('\n').split(' ') for line in f.readlines()]
 
 # TODO: Update reshape to allow variable batch size...
-val_images = ["/workspace/MLsuite/notebooks/imagenet-val/ILSVRC2012_val_00000001.JPEG"]
-
-## Non-ImageNet...
-#val_images = ["/workspace/MLsuite/examples/image_classify/sample_images/dog.jpg"]
-#imagenet_val_list = [('dog.jpg',259)]
+val_images = ["/workspace/MLsuite/notebooks/imagenet-val/ILSVRC2012_val_00000002.JPEG"]
 
 imagenet_val_dict = dict(imagenet_val_list)
 
@@ -164,9 +172,9 @@ def softmax(x):
 ##################################################
 
 config = {
-    'netcfg': "work/tvm_compiler.json",
-    'weights': "work/weights_data.h5",
-    'quantizecfg': "work/tvm_quantizer.json"
+    'netcfg'     : "work/" + model_name + "_compiler.json",
+    'weights'    : "work/" + model_name + "_weights.h5",
+    'quantizecfg': "work/" + model_name + "_quantizer.json"
 }
 
 # Initializes TVM Compiler for XDNN
@@ -202,9 +210,6 @@ elif frontend == 'Relay':
                                       add_output_layers=add_output_layers)
     
     
-#pdb.set_trace()
-# xfgraph is basically our XDNN IR
-xfgraph.visualize('tvm_graph.png')
 
 ################################################## 
 # XDNN QUANTIZE MODEL
@@ -216,7 +221,7 @@ from xfdnn.tools.xfgraph.quantization import XfGraphDefaultQuantizer, XfGraphAdd
 calibration_directory = '/workspace/MLsuite/notebooks/calibration_directory'
 img_io_func = xfdnn_io.load_imgs_from_file(data_io, resize_shape, model_name)
 
-"""
+
 quantizer = XfGraphDefaultQuantizer(
     xfgraph=xfgraph,
     quant_file=config["quantizecfg"], 
@@ -226,11 +231,11 @@ quantizer = XfGraphDefaultQuantizer(
     cal_size=15
 )
 quantizer.quantize()
-"""
-
+ 
+ 
 xfgraph.save('xfgraph')
-
-
+ 
+ 
 # COMPILE
 xdnn_tvm_compiler.compile(xfgraph)
 
@@ -239,6 +244,10 @@ from xfdnn.tools.xfgraph.xfgraph import XfGraph
 xfgraph.build(device='cpu')
 
 
+#####xfgraph.build(device='fpga', 
+#####              quantcfg=config["quantizecfg"], 
+#####              fpga_netcfg=config["netcfg"], 
+#####              fpga_params_file=config['weights'])
 
 
 
@@ -266,49 +275,57 @@ cpu_nontvm_res = xfgraph.run(inputs,
 ##################################################
 # CPU TVM RUN
 ##################################################
-pdb.set_trace()
+#pdb.set_trace()
 # RECONSTRUCT AND FUSE THE GRAPH FOR XDNN
 import contrib_xdnn
-from graph import graph_reconst
+#from graph import graph_reconst, reconst_graph
 
-# SETUP AND COMPILE THE RECONSTRUCTED NNVM GRAPH
+
 target, target_host = 'llvm', 'llvm'
-params_shapes = dict((k, params[k].shape) for k in params)
-params_dtypes = dict((k, params[k].dtype) for k in params)
 input_name    = list(data_shapes.keys())[0]
 shape_dict    = data_shapes
-input_type    = 'float32'
-dtype_dict    = {input_name: input_type }
-dtype_dict.update(params_dtypes)
 
-graph, lib, params = nnvm.compiler.build(
-    compute_graph, target, shape_dict, dtype_dict,
-    params=params, target_host=target_host)
+if frontend == 'NNVM':
+# SETUP AND COMPILE THE RECONSTRUCTED NNVM GRAPH
+    params_shapes = dict((k, params[k].shape) for k in params)
+    params_dtypes = dict((k, params[k].dtype) for k in params)
 
-# RUN THE GRAPH
-# TODO PROPER DATA LAYOUT/SHAPE HAS TO BE PASSED...
-# IF INPUT TENSOR IS NOT THE IMAGE
-from tvm.contrib import graph_runtime
-ctx = tvm.cpu(0)
-m = graph_runtime.create(graph, lib, ctx)
+    input_type    = 'float32'
+    dtype_dict    = {input_name: input_type }
+    dtype_dict.update(params_dtypes)
+    
+    graph, lib, params = nnvm.compiler.build(
+        compute_graph, target, shape_dict, dtype_dict,
+        params=params, target_host=target_host)
 
-# WHEN RUNNING TVM-ONLY, NP.RESHAPE HAS TO BE CHANGED TO NP.TRANSPOSE FOR MODELS THAT DO NOT FOLLOW 'NCHW' LAYOUT SINCE THE IMAGE IS READ IN 'NCHW' LAYOUT
-#m.set_input(Placeholder=np.array(res[0]))
-#m.set_input(Placeholder=(np.transpose(batch_array,(0,2,3,1))))
 
-# SAVE NNVM/TVM OUTPUT
-lib.export_library("tvm_cpu.so")
-with open("tvm_cpu.json","w") as f:
-    f.write(graph.json())
-with open("tvm_cpu.params","wb") as f:
-    f.write(nnvm.compiler.save_param_dict(params))
+    # SAVE NNVM/TVM OUTPUT
+    lib.export_library("tvm_cpu.so")
+    with open("tvm_cpu.json","w") as f:
+        f.write(graph.json())
+    with open("tvm_cpu.params","wb") as f:
+        f.write(nnvm.compiler.save_param_dict(params))
+            
+    
+######elif frontend == 'Relay':
+######    graph, lib, params = relay.build_module.build(
+######        mod, target, params=params)
+######    print(" --debug: priting graph")
+######    print(graph)
+###### 
+####### RUN THE GRAPH
+####### TODO PROPER DATA LAYOUT/SHAPE HAS TO BE PASSED...
+####### IF INPUT TENSOR IS NOT THE IMAGE
+######from tvm.contrib import graph_runtime
+######ctx = tvm.cpu(0)
+######m = graph_runtime.create(graph, lib, ctx)
 
 # RUN
-params.update({input_name:np.reshape(np.array(batch_array),shape_dict[input_name])})
-m.set_input(**params)
-
-m.run()
-cpu_tvm_output = m.get_output(0)
+######params.update({input_name:np.reshape(np.array(batch_array),shape_dict[input_name])})
+######m.set_input(**params)
+###### 
+######m.run()
+######cpu_tvm_output = m.get_output(0)
 
 
 
@@ -321,53 +338,73 @@ cpu_tvm_output = m.get_output(0)
 # RECONSTRUCT AND FUSE THE GRAPH FOR XDNN
 import contrib_xdnn
 from graph import graph_reconst
-gidx = compute_graph.index
+from graph import ACCELModule
 
-print("Starting to partitioning/reconstructing the graph")
-graph = graph_reconst(json_path = config["netcfg"], nnvm_graph = gidx.nodes, output_layout = data_layout, output_layers = add_output_layers )
-print("Finished partitioning/reconstructing the graph")
-
-# SETUP AND COMPILE THE RECONSTRUCTED NNVM GRAPH
 target, target_host = 'llvm', 'llvm'
-params_shapes = dict((k, params[k].shape) for k in params)
-params_dtypes = dict((k, params[k].dtype) for k in params)
 input_name    = list(data_shapes.keys())[0]
 shape_dict    = data_shapes
-input_type    = 'float32'
-dtype_dict    = {input_name: input_type }
-dtype_dict.update(params_dtypes)
 
-graph, lib, params = nnvm.compiler.build(
-    graph, target, shape_dict, dtype_dict,
-    params=params, target_host=target_host)
+if frontend == 'NNVM':
+    gidx = compute_graph.index
+    print("Starting to partitioning/reconstructing the graph")
+    graph = graph_reconst(path = os.getcwd() + '/work/' , nnvm_graph = gidx.nodes, output_layout = data_layout, output_layers = add_output_layers, model_name = model_name )
+    print("Finished partitioning/reconstructing the graph")
 
-print("Finished recompiling NNVM/TVM graph")
+    # SETUP AND COMPILE THE RECONSTRUCTED NNVM GRAPH
+    params_shapes = dict((k, params[k].shape) for k in params)
+    params_dtypes = dict((k, params[k].dtype) for k in params)
 
+    input_type    = 'float32'
+    dtype_dict    = {input_name: input_type }
+    dtype_dict.update(params_dtypes)
+    
+    graph, lib, params = nnvm.compiler.build(
+        graph, target, shape_dict, dtype_dict,
+        params=params, target_host=target_host)
 
-# RUN THE GRAPH
+    print("Finished recompiling NNVM/TVM graph")
+    
+    # SAVE NNVM/TVM OUTPUT
+    lib.export_library("tvm_fpga_cpu.so")
+    with open("tvm_fpga_cpu.json","w") as f:
+        f.write(graph.json())
+    with open("tvm_fpga_cpu.params","wb") as f:
+        f.write(nnvm.compiler.save_param_dict(params))
+
+     
+
+elif frontend == 'Relay':
+
+    fpass = ACCELModule(path = os.getcwd() + '/work/', output_layout = data_layout, output_layers = add_output_layers, model_name = model_name)
+    assert fpass.info.name == "ACCELModule"
+    graph = fpass(mod)
+    graph, lib, params = relay.build_module.build(
+        graph, target, params=params)
+    
+
+    # SAVE NNVM/TVM OUTPUT
+    lib.export_library("tvm_fpga_cpu.so")
+    with open("tvm_fpga_cpu.json","w") as f:
+        f.write(graph)
+    with open("tvm_fpga_cpu.params","wb") as f:
+        f.write(relay.save_param_dict(params))
+
+     
+
+    
+    
+    #### GRAPH
 # TODO PROPER DATA LAYOUT/SHAPE HAS TO BE PASSED...
 # IF INPUT TENSOR IS NOT THE IMAGE
 from tvm.contrib import graph_runtime
 ctx = tvm.cpu(0)
 m = graph_runtime.create(graph, lib, ctx)
 
-# WHEN RUNNING TVM-ONLY, NP.RESHAPE HAS TO BE CHANGED TO NP.TRANSPOSE FOR MODELS THAT DO NOT FOLLOW 'NCHW' LAYOUT SINCE THE IMAGE IS READ IN 'NCHW' LAYOUT
-#m.set_input(Placeholder=np.array(res[0]))
-#m.set_input(Placeholder=(np.transpose(batch_array,(0,2,3,1))))
-
-
-# SAVE NNVM/TVM OUTPUT
-lib.export_library("tvm_fpga_cpu.so")
-with open("tvm_fpga_cpu.json","w") as f:
-    f.write(graph.json())
-with open("tvm_fpga_cpu.params","wb") as f:
-    f.write(nnvm.compiler.save_param_dict(params))
-
-            
+       
 # RUN            
 params.update({input_name:np.reshape(np.array(batch_array),shape_dict[input_name])})
 m.set_input(**params)
-
+ 
 m.run()
 fpga_tvm_output = m.get_output(0)
 
@@ -375,14 +412,14 @@ fpga_tvm_output = m.get_output(0)
 # Final output
 ##################################################
 
-for op in add_output_layers:
-    if op == "Softmax":
-        # Why only on cpu_res???
-        cpu_nontvm_res[0] = softmax(cpu_nontvm_res[0])
-        cpu_tvm_output = softmax(cpu_tvm_output.asnumpy())
-    else:
-        print("Output layer \"{}\" yet supported.".format(op))
-
+####for op in add_output_layers:
+####    if op == "Softmax":
+####        pdb.set_trace()
+####        cpu_nontvm_res[0] = softmax(cpu_nontvm_res[0])
+####        #cpu_tvm_output = softmax(cpu_tvm_output.asnumpy())
+####    else:
+####        print("Output layer \"{}\" yet supported.".format(op))
+ 
 predict("CPU ONLY (NON-TVM)", cpu_nontvm_res[0], imagenet_val_labels)
-predict("TVM CPU ONLY",cpu_tvm_output, imagenet_val_labels)
+#predict("TVM CPU ONLY",cpu_tvm_output, imagenet_val_labels)
 predict("TVM CPU+FPGA",fpga_tvm_output.asnumpy(), imagenet_val_labels)
