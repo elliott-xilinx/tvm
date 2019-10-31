@@ -1,0 +1,53 @@
+FROM tvm.ci_cpu_dev
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    cmake \
+    sudo \
+    wget \
+    git \
+    vim \
+    autoconf \
+    graphviz \
+    python-dev \
+    libtool \
+    libopenblas-dev \
+    libgflags-dev \
+    libgoogle-glog-dev \
+    libopencv-dev \
+    protobuf-compiler \
+    libleveldb-dev \
+    liblmdb-dev \
+    libhdf5-dev \
+    libsnappy-dev \
+    libboost-all-dev \
+    libssl-dev
+
+RUN apt-get update && apt-get install -y gcc-aarch64-linux-gnu
+
+# Install dnnc and copy packages (catch exit code 1 which indicates that decent gpu setup was unsuccessful)
+COPY host_x86/pkgs /dnndk/pkgs/
+COPY host_x86/dcf /dnndk/dcf/
+COPY host_x86/install.sh /dnndk/install.sh
+RUN cd /dnndk && ./install.sh || true
+
+RUN dnnc --version
+
+# DNNDK decent tensorflow
+COPY host_x86/decent-tf/ubuntu16.04/tensorflow-1.12.0-cp36-cp36m-linux_x86_64.whl /dnndk/decent-tf/tensorflow-1.12.0-cp36-cp36m-linux_x86_64.whl  
+
+RUN pip install --upgrade pip
+RUN pip3 install --no-cache-dir\
+    dnndk/decent-tf/tensorflow-1.12.0-cp36-cp36m-linux_x86_64.whl  \
+    onnx==1.5.0 \
+    numpy \
+    pydot==1.4.1 \
+    h5py==2.8.0 \
+    opencv-python \
+    matplotlib \
+    jupyter \
+    psutil \
+    sklearn \
+    scipy \
+    progressbar2
