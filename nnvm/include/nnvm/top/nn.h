@@ -557,6 +557,9 @@ struct ACCELParam : public dmlc::Parameter<ACCELParam> {
   Tuple<int> output_shape;
   std::string model_name;
   std::string platform;
+  std::string input_names;
+  std::string output_names;
+  std::string kernel_name;
 
 
   DMLC_DECLARE_PARAMETER(ACCELParam) {
@@ -570,6 +573,12 @@ struct ACCELParam : public dmlc::Parameter<ACCELParam> {
       .describe("Model name");
     DMLC_DECLARE_FIELD(platform).set_default("XDNN")
       .describe("Hardware acceleration framework to run the node");
+    DMLC_DECLARE_FIELD(kernel_name)
+      .describe("Kernel name");
+    DMLC_DECLARE_FIELD(input_names)
+      .describe("Input names");
+    DMLC_DECLARE_FIELD(output_names)
+      .describe("Output_names");
 
   }
 };
