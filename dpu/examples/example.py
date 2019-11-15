@@ -108,7 +108,7 @@ quantizer = DECENTQuantizer(
 )
 
 # Run: this creates the work/deploy_model.pb and work/quantize_eval_model.pb
-netcfgs = quantizer.quantize(partitioning=True)
+netcfgs = quantizer.quantize(subgraphs_only=True)
 
 # Compilation
 from xfgraph.contrib.dnndk.dnnc_compiler import DNNCCompiler
