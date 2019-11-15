@@ -124,11 +124,23 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                 if node_name == layer_name:
                     # CREATE ACCEL NODE
                     if output_layout == 'NHWC':
-                        output_shape = (1,compiler_shape_output[2],compiler_shape_output[3],compiler_shape_output[1])
+                        output_shape = (1,
+                                        compiler_shape_output[2],
+                                        compiler_shape_output[3],
+                                        compiler_shape_output[1])
                     else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
-                        output_shape = (1,compiler_shape_output[1],compiler_shape_output[2],compiler_shape_output[3])   
+                        output_shape = (1,
+                                        compiler_shape_output[1],
+                                        compiler_shape_output[2],
+                                        compiler_shape_output[3])   
 
-                    new_entry = sym.accel(*accel_inputs, path=path, output_shape=output_shape, output_layout = output_layout, model_name = model_name, platform = platform)
+                    new_entry = sym.accel(*accel_inputs,
+                                          path=path,
+                                          output_shape=output_shape,
+                                          output_layout =
+                                          output_layout,
+                                          model_name = model_name,
+                                          platform = platform)
                     node_map[nid] = new_entry
         else:
                     
