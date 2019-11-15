@@ -14,6 +14,8 @@ import models.tools as model_tools
 #   this registers the dpu as a xfgraph target device
 from xfgraph.contrib import dnndk
 from graph import graph_reconst
+from graph import ACCELModule
+
 
 import tvm
 from tvm import contrib
@@ -82,9 +84,9 @@ elif frontend == 'Relay':
     mod, params, data_layout = \
         load_model_from_file(frontend, framework)(model_path, data_shapes, 
                                                   opt_model_path)
-    #xfgraph = from_relay(mod, params, 
-    #                     data_layout=data_layout,
-    #                     add_output_layers=add_output_layers)
+    xfgraph = from_relay(mod, params, 
+                         data_layout=data_layout,
+                         add_output_layers=add_output_layers)
 
 ##################################################
 # COMPILATION/QUANTIZATION
@@ -144,13 +146,18 @@ if do_compile:
   #  libdpumodelxp0.so and a compatibility json file for input/output naming
   compiler.compile()
 
+
+##################################################
+# TVM PARTITIONING & QUANTIZATION
+##################################################
+  
 target        = tvm.target.arm_cpu('ultra96')
 input_name    = list(data_shapes.keys())[0]
 shape_dict    = data_shapes
 
 if frontend == 'NNVM':
 
-    # SETUP AND COMPILE THE RECONSTRUCTED NNVM GRAPH
+    # GRAPH PARTITIONING
     gidx = compute_graph.index
     print("Starting to partitioning/reconstructing the graph")
     graph = graph_reconst(path          = os.getcwd(),
@@ -160,7 +167,9 @@ if frontend == 'NNVM':
                           model_name    = model_name,
                           platform      = 'DPU' )
     print("Finished partitioning/reconstructing the graph")
-    
+
+
+    # GRAPH COMPILATION
     params_shapes = dict((k, params[k].shape) for k in params)
     params_dtypes = dict((k, params[k].dtype) for k in params)
 
@@ -181,15 +190,28 @@ if frontend == 'NNVM':
         f.write(relay.save_param_dict(params))
 
         
-#TBD
+
 elif frontend == 'Relay':
 
-    #fpass = ACCELModule(path = os.getcwd() + '/work/', output_layout = data_layout, output_layers = add_output_layers, model_name = model_name)
-    #assert fpass.info.name == "ACCELModule"
-    #graph = fpass(mod)
-
+    fpass = ACCELModule(path          = os.getcwd(),
+                        output_layout = data_layout,
+                        output_layers = add_output_layers,
+                        model_name    = model_name,
+                        platform      = 'DPU')
+    assert fpass.info.name == "ACCELModule"
+    graph = fpass(mod)
+    
     graph, lib, params = relay.build_module.build(
         mod, target, params=params)
+
+
+    # SAVE NNVM/TVM OUTPUT
+    lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, cc="/usr/aarch64-linux-gnu/bin/ld")
+    with open("tvm_dpu_cpu.json","w") as f:
+        f.write(graph)
+
+    with open("tvm_dpu_cpu.params", "wb") as f:
+        f.write(relay.save_param_dict(params))
         
 print("--debug: DPU device file generation done")
     

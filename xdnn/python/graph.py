@@ -22,13 +22,10 @@ def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count, platform):
     #if the nid is not visited then you could queue
     for nid in children:
         inputs = graph[nid]["inputs"]
-        #children = [e[0] for e in nid["inputs"]]
         attrs = graph[nid].get("attrs", {})
         node_name = graph[nid]["name"]
         op_name = graph[nid]["op"]
         if node_name in input_list:
-            #pdb.set_trace()
-            # Don't add the node to trim list
             #TODO: nid-1 may not be a good candidate for finding the input node
             if platform == 'DPU':
                 fuse_list.append(nid)
@@ -64,16 +61,15 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
 
         for node in json_graph['nodes']:
             if node['LayerParameter']['type'][0] == 'DPU':
-                kernel_name   = node['name']
-                input_names   = node['LayerParameter']['attrs']['input_names']
-                output_names  = node['LayerParameter']['attrs']['output_names']
-                graph_inputs  = node['LayerParameter']['attrs']['input_layers'][input_names[0]]                
-                graph_outputs = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
-                #compiler_shape_output = [1,1000,1,1] # node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
+                kernel_name           = node['name']
+                input_names           = node['LayerParameter']['attrs']['input_names']
+                output_names          = node['LayerParameter']['attrs']['output_names']
+                graph_inputs          = node['LayerParameter']['attrs']['input_layers'][input_names[0]]
+                graph_outputs         = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
                 compiler_shape_output = node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
                 
     else:
-        compiler_json_file = path + model_name + "_compiler.json"
+        compiler_json_file = path + "/work/" + model_name + "_compiler.json"
         with open(compiler_json_file) as json_file:
             json_graph = json.load(json_file)
         
@@ -100,7 +96,7 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
             
         # PARSE THROUGH THE GRAPH AND FIND THE MATCHING OUTPUT NODE
         layer_nid=0
-        for nid, node in enumerate(nnvm_graph): # have to change that later
+        for nid, node in enumerate(nnvm_graph): 
             node_name = node["name"]
             if layer_name == node_name:
                 layer_nid=nid
@@ -366,42 +362,72 @@ def reconst_graph(mod, path, output_layout, output_layers=None):
 @relay.transform.module_pass(opt_level=4)
 class ACCELModule:
 
-    def __init__(self, path, output_layout, model_name, output_layers=None):
-        self.path     = path
+    def __init__(self, path, output_layout, model_name, output_layers=None, platform = 'XDNN'):
+        self.path          = path
         self.output_layout = output_layout
         self.output_layers = output_layers
         self.model_name    = model_name
+        self.platform      = platform
         
     def transform_module(self, mod, ctx):
         print (" passed parameters %s, %s, %s" %(self.path,self.output_layout,self.output_layers))
 
 
-        mod = self.reconst_graph(mod,self.path,self.output_layout,self.model_name,self.output_layers)
+        mod = self.reconst_graph(mod,
+                                 self.path,
+                                 self.output_layout,
+                                 self.model_name,
+                                 self.platform,
+                                 self.output_layers,
+                                 )
 
         return mod
 
 
-    def reconst_graph(self, mod, path, output_layout, model_name, output_layers=None):
+    def reconst_graph(self, mod, path, output_layout, model_name, platform, output_layers=None):
 
         #pdb.set_trace()
         node_map={}
         xdnn_inputs = []
-        compiler_json_file = path + model_name + "_compiler.json"
-        with open(compiler_json_file) as json_file:
-            json_graph = json.load(json_file)
-        
-        graph_inputs  = json_graph["inputs"]
-        graph_outputs = json_graph["outputs"]
 
-        #pdb.set_trace()
-        compiler_shape_output = json_graph["network"][-1]["outputshapes"]
+        if platform == 'DPU':
+            compiler_json_file = path + "/dpu_xgraph.json"
+            dnn_name           = path + "/dnnc_comp_xp0.json"
+            with open(compiler_json_file) as json_file:
+                json_graph = json.load(json_file)
+            with open(dnn_name) as json_file:
+                dnnc_comp_d = json.load(json_file)
+        
+            for node in json_graph['nodes']:
+                if node['LayerParameter']['type'][0] == 'DPU':
+                    kernel_name           = node['name']
+                    input_names           = node['LayerParameter']['attrs']['input_names']
+                    output_names          = node['LayerParameter']['attrs']['output_names']
+                    graph_inputs          = node['LayerParameter']['attrs']['input_layers'][input_names[0]]
+                    graph_outputs         = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
+                    compiler_shape_output = node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
+        else:
+            compiler_json_file = path + "/work/" +  model_name + "_compiler.json"
+            with open(compiler_json_file) as json_file:
+                json_graph = json.load(json_file)
+        
+            graph_inputs  = json_graph["inputs"]
+            graph_outputs = json_graph["outputs"]
+            
+
+            #pdb.set_trace()
+            compiler_shape_output = json_graph["network"][-1]["outputshapes"]
+
+            
         xfuse_inputs=[]
         fuse_list=[]
         queue=[]
-        #input_list = [n['input_name'] for n in graph_inputs]
-        input_list = [self.extract_hash(n,'input_name') for n in graph_inputs]
-    
-    
+
+        if platform == 'DPU':
+            input_list = graph_inputs
+        else:
+            input_list = [self.extract_hash(n,'input_name') for n in graph_inputs]
+
         expr = mod.functions[mod.get_global_var('main')]
         expr = expr.body
         #traverse(expr)
