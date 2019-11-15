@@ -66,7 +66,7 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                 output_names          = node['LayerParameter']['attrs']['output_names']
                 graph_inputs          = node['LayerParameter']['attrs']['input_layers'][input_names[0]]
                 graph_outputs         = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
-                compiler_shape_output = node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
+                compiler_shape_output = node['LayerParameter']['shapes'] 
                 
     else:
         compiler_json_file = path + "/work/" + model_name + "_compiler.json"
@@ -171,192 +171,7 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
 
     # ASSUMING THE LAST NODE IS ALWAYS THE OUTPUT
     return nnvm.graph.create(node_map_list[-1][1])
-    #return nnvm.graph.create(node_map_list[1][1])
-
     
-
-'''
-def traverse(expr, output_hash, input_list, output_layout, output_shape):
-    
-    # TODO: NEED TO CREATE AN ARRAY TO RETURN
-    # WHEN THERE ARE MULTIPLE INPUTS
-    print("Traverse %s",type(expr))
-    if (isinstance(expr, tvm.relay.expr.Call)):
-        print(expr.op)
-        print(len(expr.args))
-        
-    #pdb.set_trace()
-    def recurse(expr, input_list):
-        #pdb.set_trace()
-        print(type(expr))
-        if (isinstance(expr,  tvm.relay.expr.Function)):
-            print (expr.params)
-            print (expr.body)
-            return recurse(expr.body, name)
-        
-        elif (isinstance(expr, tvm.relay.expr.Call)):
-            print(expr.op)
-            if (hash(expr) in input_list):
-                print("returning %s expr" %(expr.op))
-                return expr
-            for arg in expr.args:
-                ret = recurse(arg, input_list)
-                if ret is not None:
-                    return ret
-            return None
-        
-        elif (isinstance(expr,tvm.relay.expr.TupleGetItem)):
-            if (hash(expr) in input_list):
-                print("returning %s expr" %(expr.index))
-                return expr
-            return recurse(expr.tuple_value, input_list)
-        
-        elif (isinstance(expr,tvm.relay.expr.Var)):
-            print(expr.name_hint)
-            if (hash(expr) in input_list or int(expr.name_hint) in input_list):
-                print("returning %s expr" %(expr.name_hint))
-                return expr
-            else:
-                return None
-        else:
-            #pdb.set_trace()
-            print("Missing condition to handle node type %s", type(expr))
-
-    #assert (isinstance(expr, tvm.relay.expr.Call))
-    if (hash(expr) == output_hash):
-        print("--debug: found ouptut name")
-        for arg in expr.args:
-            input_node = recurse(arg,input_list)
-            if(input_node is not None):
-                print("--debug: found input node")
-                #pdb.set_trace()
-
-                if output_layout == 'NHWC':
-                    output_shape = (1,output_shape[2],output_shape[3],output_shape[1])
-                else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
-                    output_shape = (1,output_shape[1],output_shape[2],output_shape[3])   
-                    
-                op = relay.nn.xdnn([input_node],output_layout=output_layout,path=os.getcwd(),output_shape=output_shape)
-                
-                return op
-            else: 
-                return None
-            
-
-    else:
-        if isinstance(expr,tvm.relay.expr.Constant):
-            return None
-
-        elif (isinstance(expr, tvm.relay.expr.Call)):
-            for arg in expr.args:
-                output_node = traverse(arg,output_hash,input_list, output_layout, output_shape)
-                if (output_node is not None):
-                    break
-            # CASES WHERE THE OUTPUT_NODE DOES NOT MERGE INTO THE INPUT_NODE
-            if output_node is None:
-                return output_node
-            
-        elif(isinstance(expr,tvm.relay.expr.TupleGetItem)):
-             return traverse(expr.tuple_value, output_hash,input_list,output_layout,output_shape)
-        
-        elif(isinstance(expr,tvm.relay.expr.Tuple)):
-            return None
-            #return traverse(expr.fields, output_hash,input_list,output_layout,output_shape)
-        elif(isinstance(expr,tvm.relay.expr.Var)):
-            return None
-        else:
-            #print(expr.fields)
-            assert False, print("Missing condition to handle node type %s", type(expr))
-
-   
-        if (isinstance(expr, tvm.relay.expr.Call)):
-            
-            children=[]
-            for arg in expr.args:
-                
-                #  or output_node.op == xdnn): #TODO: HAVE TO FIUGREOUT LATER
-                if (isinstance(arg, tvm.relay.expr.Call)):
-                    
-                    if (arg.op == output_node.op or
-                        output_node.op.name == 'nn.xdnn'):
-                        children.append(output_node)
-                    else:
-                        children.append(arg)
-                else:
-                    children.append(arg)
-                                            
-                #assert isinstance(expr, tvm.relay.expr.Call), print("No instruction to reconstruct node type %s", type(expr) )
-
-               
-                    
-            new_node = relay.Call(expr.op,children,expr.attrs,expr.type_args)
-
-        else:
-            #pdb.set_trace()
-            assert isinstance(expr, tvm.relay.expr.Call), print("Condition to reconstruct node type %s has not been implemented", type(expr) )
-
-         
-            
-        return new_node
-
-def extract_hash(name, key):
-    if key == 'input_name':
-        val = name[key].split('-')
-    else:
-        val = name[key][0].split('-')
-
-    try:
-        return int(val[0])
-    except (ValueError):
-        return int(val[1])
-        
-
-    
-# Add any extra operations to the graph
-def reconst_graph(mod, path, output_layout, output_layers=None):
-    input_name = 'nn.conv2d'
-    output_name = 'nn.relu'
-
-    node_map={}
-    xdnn_inputs = []
-
-    with open(path) as json_file:
-        json_graph = json.load(json_file)
-        
-    graph_inputs  = json_graph["inputs"]
-    graph_outputs = json_graph["outputs"]
-
-    #pdb.set_trace()
-    compiler_shape_output = json_graph["network"][-1]["outputshapes"]
-    xfuse_inputs=[]
-    fuse_list=[]
-    queue=[]
-    #input_list = [n['input_name'] for n in graph_inputs]
-    input_list = [extract_hash(n,'input_name') for n in graph_inputs]
-    
-    
-    #pdb.set_trace()
-    expr = mod.functions[mod.get_global_var('main')]
-    expr = expr.body
-    #traverse(expr)
-    for output in graph_outputs:
-        # TODO: PREVIOUS_LAYERS IS NOT A GOOD CHOICE OF GETTING THE OUTPUT NAME
-        # WILL NEED TO CHANGE LATER
-        output_hash = extract_hash(output,'previous_layers')
-        expr = traverse(expr,output_hash, input_list, output_layout, compiler_shape_output)
-        
-    #pdb.set_trace()
-    # ADD ANY LAYERS NECESSARY AT THE END BASED ON THE OUTPUT_LAYERS LIST
-    if output_layers:
-        for layer in output_layers:
-            if layer =='Softmax':
-                expr = relay.nn.softmax(expr)
-    
-    mod = relay.Module.from_expr(expr)
-
-    return mod
-
-'''
 
 
 @relay.transform.module_pass(opt_level=4)
@@ -405,7 +220,7 @@ class ACCELModule:
                     output_names          = node['LayerParameter']['attrs']['output_names']
                     graph_inputs          = node['LayerParameter']['attrs']['input_layers'][input_names[0]]
                     graph_outputs         = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
-                    compiler_shape_output = node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
+                    compiler_shape_output = node['LayerParameter']['shapes'] 
         else:
             compiler_json_file = path + "/work/" +  model_name + "_compiler.json"
             with open(compiler_json_file) as json_file:
