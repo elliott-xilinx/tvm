@@ -1,5 +1,4 @@
 import json
-import pdb
 import nnvm
 import nnvm.symbol as sym
 import os
@@ -9,7 +8,7 @@ from tvm import relay
 # RECURSIVE ALGORITHM TO PARSE THE GRAPH,
 # AND FIND NODES BETWEEN THE OUTPUTS AND INPUTS
 # PROVIDED BY THE COMPILER
-def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count):
+def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count, platform):
 
     # RETURN CONDITION
     if not queue:
@@ -28,8 +27,14 @@ def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count):
         node_name = graph[nid]["name"]
         op_name = graph[nid]["op"]
         if node_name in input_list:
+            #pdb.set_trace()
             # Don't add the node to trim list
-            xfuse_inputs.append(nid)
+            #TODO: nid-1 may not be a good candidate for finding the input node
+            if platform == 'DPU':
+                fuse_list.append(nid)
+                xfuse_inputs.append(nid-1)
+            else:
+                xfuse_inputs.append(nid)
         elif nid in fuse_list:
             continue
         else:
@@ -37,31 +42,60 @@ def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count):
             queue.append(nid)
 
 
-    fuse(graph,xfuse_inputs,input_list,queue,fuse_list,count)
+    fuse(graph,xfuse_inputs,input_list,queue,fuse_list,count, platform)
     
 
 # FUNCTION TO PARSE THROUGH THE NNVM GRAPH,
 # TRIM NODES BASED ON THE OUTPUT OF EXTERNAL COMPILER,
 # AND CREATE A NEW NNVM GRAPH
-def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=None): 
+def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=None, platform = 'XDNN'): 
     node_map={}
     accel_inputs = []
 
-    compiler_json_file = path + model_name + "_compiler.json"
-    with open(compiler_json_file) as json_file:
-        json_graph = json.load(json_file)
+    if platform == 'DPU':
+        compiler_json_file = path + "/dpu_xgraph.json"
+        dnn_name           = path + "/dnnc_comp_xp0.json"
+        with open(compiler_json_file) as json_file:
+            json_graph = json.load(json_file)
+        # with open(dnn_name) as json_file:
+        #    name_dict = json.load(json_file)
         
-    graph_inputs = json_graph["inputs"]
-    graph_outputs = json_graph["outputs"]
-    graph_outputs = json_graph["outputs"]
-    #pdb.set_trace()
-    compiler_shape_output = json_graph["network"][-1]["outputshapes"]
+        # TEMP
+
+        for node in json_graph['nodes']:
+            if node['LayerParameter']['type'][0] == 'DPU':
+                input_names   = node['LayerParameter']['attrs']['input_names']
+                output_names  = node['LayerParameter']['attrs']['output_names']
+                graph_inputs  = node['LayerParameter']['attrs']['input_layers'][input_names[0]]                
+                graph_outputs = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
+                compiler_shape_output = [1,1000,1,1] # node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
+
+    else:
+        compiler_json_file = path + model_name + "_compiler.json"
+        with open(compiler_json_file) as json_file:
+            json_graph = json.load(json_file)
+        
+        graph_inputs = json_graph["inputs"]
+        graph_outputs = json_graph["outputs"]                                         
+        compiler_shape_output = json_graph["network"][-1]["outputshapes"]
+        
     xfuse_inputs=[]
     fuse_list=[]
     queue=[]
-    input_list = [n['input_name'] for n in graph_inputs]
+
+
+    if platform == 'DPU':
+        input_list = graph_inputs
+    else:
+        input_list = [n['input_name'] for n in graph_inputs]
+        
     for layer in graph_outputs:
-        layer_name = layer['previous_layers'][0]
+
+        if platform == 'DPU':
+            layer_name = layer
+        else:
+            layer_name = layer['previous_layers'][0]
+            
         # PARSE THROUGH THE GRAPH AND FIND THE MATCHING OUTPUT NODE
         layer_nid=0
         for nid, node in enumerate(nnvm_graph): # have to change that later
@@ -70,7 +104,7 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                 layer_nid=nid
         assert layer_nid != 0, "The output node was not found"
         queue.append(layer_nid)
-        fuse(nnvm_graph,xfuse_inputs,input_list,queue,fuse_list,0)
+        fuse(nnvm_graph,xfuse_inputs,input_list,queue,fuse_list,0, platform)
 
     # GRAPH RECONSTRUCTION
     for nid, node in enumerate(nnvm_graph):
@@ -83,7 +117,10 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
         new_entry = None
         if nid in fuse_list:
             for layer in graph_outputs:
-                layer_name = layer['previous_layers'][0]
+                if platform == 'DPU':
+                    layern_name = layer
+                else:
+                    layer_name = layer['previous_layers'][0]
                 if node_name == layer_name:
                     # CREATE ACCEL NODE
                     if output_layout == 'NHWC':
@@ -91,7 +128,7 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                     else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
                         output_shape = (1,compiler_shape_output[1],compiler_shape_output[2],compiler_shape_output[3])   
 
-                    new_entry = sym.accel(*accel_inputs, path=path, output_shape=output_shape, output_layout = output_layout, model_name = model_name)
+                    new_entry = sym.accel(*accel_inputs, path=path, output_shape=output_shape, output_layout = output_layout, model_name = model_name, platform = platform)
                     node_map[nid] = new_entry
         else:
                     
