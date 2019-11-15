@@ -69,15 +69,16 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                 output_names  = node['LayerParameter']['attrs']['output_names']
                 graph_inputs  = node['LayerParameter']['attrs']['input_layers'][input_names[0]]                
                 graph_outputs = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
-                compiler_shape_output = [1,1000,1,1] # node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
-
+                #compiler_shape_output = [1,1000,1,1] # node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
+                compiler_shape_output = node['LayerParameter']['shapes'] #[1,1000,1,1] # TEMP
+                
     else:
         compiler_json_file = path + model_name + "_compiler.json"
         with open(compiler_json_file) as json_file:
             json_graph = json.load(json_file)
         
-        graph_inputs = json_graph["inputs"]
-        graph_outputs = json_graph["outputs"]                                         
+        graph_inputs          = json_graph["inputs"]
+        graph_outputs         = json_graph["outputs"]                                         
         compiler_shape_output = json_graph["network"][-1]["outputshapes"]
         
     xfuse_inputs=[]
@@ -124,33 +125,33 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                     layer_name = layer['previous_layers'][0]
                 if node_name == layer_name:
                     # CREATE ACCEL NODE
-                    if output_layout == 'NHWC':
+                    if platform == 'XDNN' and output_layout == 'NHWC':
                         output_shape = (1,
                                         compiler_shape_output[2],
                                         compiler_shape_output[3],
                                         compiler_shape_output[1])
-                    else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
-<<<<<<< HEAD
+                        
+                    elif platform == 'DPU'  and output_layout == 'NCHW':
+                        output_shape = (1,
+                                        compiler_shape_output[3],
+                                        compiler_shape_output[1],
+                                        compiler_shape_output[2])
+                    else: 
                         output_shape = (1,
                                         compiler_shape_output[1],
                                         compiler_shape_output[2],
                                         compiler_shape_output[3])   
 
                     new_entry = sym.accel(*accel_inputs,
-                                          path=path,
-                                          output_shape=output_shape,
-                                          output_layout =
-                                          output_layout,
-                                          model_name = model_name,
-                                          platform = platform)
-=======
-                        output_shape = (1,compiler_shape_output[1],compiler_shape_output[2],compiler_shape_output[3])   
+                                          path          = path,
+                                          kernel_name   = kernel_name,
+                                          input_names   = dnnc_comp_d[input_names[0] ],
+                                          output_names  = dnnc_comp_d[output_names[0]],
+                                          output_shape  = output_shape,
+                                          output_layout = output_layout,
+                                          model_name    = model_name,
+                                          platform      = platform)
 
-                    new_entry = sym.accel(*accel_inputs, path=path, kernel_name =kernel_name,
-                        input_names = dnnc_comp_d[input_names[0]], output_names = dnnc_comp_d[output_names[0]],
-                        output_shape=output_shape, output_layout = output_layout, 
-                        model_name = model_name, platform = platform)
->>>>>>> ad527dd5af7a7e8d1ac64abcca9ec35f00beac17
                     node_map[nid] = new_entry
         else:
                     
