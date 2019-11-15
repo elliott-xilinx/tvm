@@ -90,7 +90,7 @@ elif frontend == 'Relay':
 # COMPILATION/QUANTIZATION
 ##################################################
 
-do_compile = True
+do_compile = False
 
 if do_compile:
   # Optimization
@@ -143,9 +143,6 @@ if do_compile:
   # Run: This creates the DPU library file containing the full DPU network and params
   #  libdpumodelxp0.so and a compatibility json file for input/output naming
   compiler.compile()
-  
-#pdb.set_trace()
-
 
 target        = tvm.target.arm_cpu('ultra96')
 input_name    = list(data_shapes.keys())[0]
@@ -171,15 +168,10 @@ if frontend == 'NNVM':
     dtype_dict    = {input_name: input_type }
     dtype_dict.update(params_dtypes)
     
-    #graph, lib, params = nnvm.compiler.build(
-    #    graph, target, shape_dict, dtype_dict,
-    #    params=params, target_host=target_host)
-    
     graph, lib, params = nnvm.compiler.build(
         graph, target, shape_dict, dtype_dict,
         params=params)
 
-    #pdb.set_trace()
      # SAVE NNVM/TVM OUTPUT
     lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, cc="/usr/aarch64-linux-gnu/bin/ld")
     with open("tvm_dpu_cpu.json","w") as f:
@@ -195,6 +187,7 @@ elif frontend == 'Relay':
     #fpass = ACCELModule(path = os.getcwd() + '/work/', output_layout = data_layout, output_layers = add_output_layers, model_name = model_name)
     #assert fpass.info.name == "ACCELModule"
     #graph = fpass(mod)
+
     graph, lib, params = relay.build_module.build(
         mod, target, params=params)
         
