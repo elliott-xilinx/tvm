@@ -557,6 +557,9 @@ struct ACCELParam : public dmlc::Parameter<ACCELParam> {
   Tuple<int> output_shape;
   std::string model_name;
   std::string platform;
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  std::string kernel_name;
 
 
   DMLC_DECLARE_PARAMETER(ACCELParam) {

@@ -64,6 +64,7 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
 
         for node in json_graph['nodes']:
             if node['LayerParameter']['type'][0] == 'DPU':
+                kernel_name   = node['name']
                 input_names   = node['LayerParameter']['attrs']['input_names']
                 output_names  = node['LayerParameter']['attrs']['output_names']
                 graph_inputs  = node['LayerParameter']['attrs']['input_layers'][input_names[0]]                
@@ -128,7 +129,10 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                     else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
                         output_shape = (1,compiler_shape_output[1],compiler_shape_output[2],compiler_shape_output[3])   
 
-                    new_entry = sym.accel(*accel_inputs, path=path, output_shape=output_shape, output_layout = output_layout, model_name = model_name, platform = platform)
+                    new_entry = sym.accel(*accel_inputs, path=path, kernel_name =kernel_name,
+                        input_names = input_names, output_names = output_names,
+                        output_shape=output_shape, output_layout = output_layout, 
+                        model_name = model_name, platform = platform)
                     node_map[nid] = new_entry
         else:
                     
