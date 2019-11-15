@@ -38,15 +38,18 @@ def select_model(MODEL):
     model_name        = models[MODEL]['model']
     model_path        = models[MODEL]['model_path']
     opt_model_path    = models[MODEL]['weights_path']
-    data_io           = models[MODEL]['io']
+    model_io          = models[MODEL]['io']
     add_output_layers = models[MODEL]['add_output_layers']
     
     input_formats     = models[MODEL]['input_formats']
     data_inputs       = models[MODEL]['inputs']
     data_input_shapes = models[MODEL]['input_shapes']
-    data_shapes       = {}
-    for inpt, shape in zip(data_inputs, data_input_shapes):
+    
+    data_io = {}
+    data_shapes = {}
+    for inpt, shape, io in zip(data_inputs, data_input_shapes, model_io):
         data_shapes[inpt] = shape
+        data_io[inpt] = io
 
 select_model( "Tensorflow-SLIM-ResNet_V1_50")
 #select_model( "MXNet-GLUON-ResNet_V1_18" ) 
@@ -86,59 +89,62 @@ elif frontend == 'Relay':
 ##################################################
 # COMPILATION/QUANTIZATION
 ##################################################
-'''
-# Optimization
-from xfgraph.generator.tensorflow import XfGraphTfGeneratorOptimizer
-xfgraph.optimize(XfGraphTfGeneratorOptimizer)
 
-# Partitioning
-xfgraph.partition(devices=['dpu'])
+do_compile = True
 
-# Dump the partitioned graph -> dpu_xgraph.json - dpu_xgraph.h5
-from xfgraph.graph.io.xgraph_io import XGraphIO
-
-dpu_xgraph = xfgraph.schedule(device='dpu')
-XGraphIO.save(dpu_xgraph, 'dpu_xgraph')
-
-# Quantization
-from xfgraph.contrib.dnndk.decent_quantizer import DECENTQuantizer
-
-FILE_PATH = os.getcwd()
-cal_dir = os.path.join(FILE_PATH, "imagenet/val-small")
-
-quantizer = DECENTQuantizer(
-    xfgraph = xfgraph,
-    data_prep_key = data_io,
-    cal_dir = cal_dir,
-    cal_size=32,
-    cal_iter=4
-)
-
-# Run: this creates the work/deploy_model.pb and work/quantize_eval_model.pb
-netcfgs = quantizer.quantize(subgraphs_only=True)
-
-# Compilation
-from xfgraph.contrib.dnndk.dnnc_compiler import DNNCCompiler
-
-FILE_PATH = os.getcwd()
-output_dir = os.path.join(FILE_PATH, "work")
-netcfgs = {
-    'xp0': os.path.join(FILE_PATH, "work/deploy_model.pb")
-}
-#dcf = "/dnndk/dcf/ZCU104.dcf"
-dcf = "/dnndk/dcf/Ultra96.dcf"
-
-compiler = DNNCCompiler(
-    xfgraph = xfgraph,
-    netcfgs = netcfgs,
-    dcf = dcf
-)
-
-# Run: This creates the DPU library file containing the full DPU network and params
-#  libdpumodelxp0.so and a compatibility json file for input/output naming
-compiler.compile()
-'''
-pdb.set_trace()
+if do_compile:
+  # Optimization
+  from xfgraph.generator.tensorflow import XfGraphTfGeneratorOptimizer
+  xfgraph.optimize(XfGraphTfGeneratorOptimizer)
+  
+  # Partitioning
+  xfgraph.partition(devices=['dpu'])
+  
+  # Dump the partitioned graph -> dpu_xgraph.json - dpu_xgraph.h5
+  from xfgraph.graph.io.xgraph_io import XGraphIO
+  
+  dpu_xgraph = xfgraph.schedule(device='dpu')
+  XGraphIO.save(dpu_xgraph, 'dpu_xgraph')
+  
+  # Quantization
+  from xfgraph.contrib.dnndk.decent_quantizer import DECENTQuantizer
+  
+  FILE_PATH = os.getcwd()
+  cal_dir = os.path.join(FILE_PATH, "imagenet/val-small")
+  
+  quantizer = DECENTQuantizer(
+      xfgraph = xfgraph,
+      data_prep_key = data_io[data_inputs[0]],
+      cal_dir = cal_dir,
+      cal_size=32,
+      cal_iter=4
+  )
+  
+  # Run: this creates the work/deploy_model.pb and work/quantize_eval_model.pb
+  netcfgs = quantizer.quantize(subgraphs_only=True)
+  
+  # Compilation
+  from xfgraph.contrib.dnndk.dnnc_compiler import DNNCCompiler
+  
+  FILE_PATH = os.getcwd()
+  output_dir = os.path.join(FILE_PATH, "work")
+  netcfgs = {
+      'xp0': os.path.join(FILE_PATH, "work/deploy_model.pb")
+  }
+  #dcf = "/dnndk/dcf/ZCU104.dcf"
+  dcf = "/dnndk/dcf/Ultra96.dcf"
+  
+  compiler = DNNCCompiler(
+      xfgraph = xfgraph,
+      netcfgs = netcfgs,
+      dcf = dcf
+  )
+ 
+  # Run: This creates the DPU library file containing the full DPU network and params
+  #  libdpumodelxp0.so and a compatibility json file for input/output naming
+  compiler.compile()
+  
+#pdb.set_trace()
 
 
 target        = tvm.target.arm_cpu('ultra96')
@@ -173,7 +179,7 @@ if frontend == 'NNVM':
         graph, target, shape_dict, dtype_dict,
         params=params)
 
-    pdb.set_trace()
+    #pdb.set_trace()
      # SAVE NNVM/TVM OUTPUT
     lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, cc="/usr/aarch64-linux-gnu/bin/ld")
     with open("tvm_dpu_cpu.json","w") as f:

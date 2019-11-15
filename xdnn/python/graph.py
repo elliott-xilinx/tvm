@@ -57,8 +57,8 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
         dnn_name           = path + "/dnnc_comp_xp0.json"
         with open(compiler_json_file) as json_file:
             json_graph = json.load(json_file)
-        # with open(dnn_name) as json_file:
-        #    name_dict = json.load(json_file)
+        with open(dnn_name) as json_file:
+            dnnc_comp_d = json.load(json_file)
         
         # TEMP
 
@@ -130,7 +130,7 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                         output_shape = (1,compiler_shape_output[1],compiler_shape_output[2],compiler_shape_output[3])   
 
                     new_entry = sym.accel(*accel_inputs, path=path, kernel_name =kernel_name,
-                        input_names = input_names, output_names = output_names,
+                        input_names = dnnc_comp_d[input_names[0]], output_names = dnnc_comp_d[output_names[0]],
                         output_shape=output_shape, output_layout = output_layout, 
                         model_name = model_name, platform = platform)
                     node_map[nid] = new_entry
