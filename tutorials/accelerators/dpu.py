@@ -14,6 +14,8 @@ from tvm import contrib
 import nnvm
 import tvm.relay as relay
 from tvm.contrib import vai
+from cvx.img_loader import ImgLoader
+from cvx.img_processor import ImgProcessor
 
 ##################################################
 # MODEL SETTINGS
@@ -99,7 +101,7 @@ if frontend == 'NNVM':
         load_model_from_file(frontend, framework)\
             (model_path, data_shapes, opt_model_path)
     
-    nnvm_graph = vai.NNVMPartitioningPass(target='dpu-zcu104',
+    nnvm_graph = vai.NNVMPartitioningPass(target='dpu-ultra96',
         params=params, data_shapes=shape_dict, 
         inputs_func=inputs_func, layout=data_layout)(nnvm_graph)
 
@@ -126,7 +128,7 @@ elif frontend == 'Relay':
         load_model_from_file(frontend, framework)\
             (model_path, data_shapes, opt_model_path)
 
-    mod = vai.PartitioningPass(target='dpu-zcu104', params=params, 
+    mod = vai.PartitioningPass(target='dpu-ultra96', params=params, 
         inputs_func=inputs_func, layout=data_layout)(mod)
 
     graph, lib, params = relay.build_module.build(
