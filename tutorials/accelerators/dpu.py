@@ -14,6 +14,8 @@ from tvm import contrib
 import nnvm
 import tvm.relay as relay
 from tvm.contrib import vai
+from cvx.img_loader import ImgLoader
+from cvx.img_processor import ImgProcessor
 
 ##################################################
 # MODEL SETTINGS
@@ -43,8 +45,8 @@ def select_model(MODEL):
         data_shapes[inpt] = shape
         data_io[inpt] = io
 
-#select_model( "Tensorflow-SLIM-ResNet_V1_50")
-select_model( "MXNet-GLUON-ResNet_V1_18" ) 
+select_model( "Tensorflow-SLIM-ResNet_V1_50")
+#select_model( "MXNet-GLUON-ResNet_V1_18" ) 
 
 print("Framework: {}".format(framework))
 print("Model path: {}".format(model_path))
