@@ -44,7 +44,7 @@ def select_model(MODEL):
         data_io[inpt] = io
 
 #select_model( "Tensorflow-SLIM-ResNet_V1_50")
-select_model( "MXNet-GLUON-ResNet_V1_18" ) 
+select_model( "MXNET-GLUON-ResNet_V1_18" ) 
 
 print("Framework: {}".format(framework))
 print("Model path: {}".format(model_path))
@@ -55,27 +55,31 @@ print("Shapes: {}".format(data_shapes))
 # INPUTS FUNC
 ##################################################
 
-img_loader = ImgLoader()
-data_preprocessor = ImgProcessor(
-    proc_key = data_io[data_inputs[0]]
-)
 
-def inputs_func(iter, layout):
+def inputs_func(iter):
     # Should be standalone, e.g. don't use variables from outside 
     #   the function
-    FILE_PATH = os.getcwd()
+    # Should return data in NHWC format
+    import os
+    from xfgraph.io import ImgLoader, ImgProcessor
+    
+    img_loader = ImgLoader()
+    data_preprocessor = ImgProcessor(
+        proc_key = "resize-224,224__scale-0.00392156862__normalize-0.485,0.456,0.406-0.229,0.224,0.225"
+    )
+    
+    FILE_PATH = '/tmp/vai'
     file_dir = os.path.join(FILE_PATH, "imagenet/val-small")
 
-    img_files = [os.path.join(file_dir, f) for f in os.listdir(file_dir)]
+    img_files = [os.path.join(file_dir, f) for f in os.listdir(file_dir)][:8]
 
     # img loader and processor load in NHWC format
     imgs = img_loader.load(img_files)
     data = data_preprocessor.execute(imgs)
     
-    if layout == 'NCHW':
-        data = np.transpose(data, (0,3,1,2))
+    # data = np.transpose(data, (0,3,1,2))
     
-    return data
+    return { 'xinput0': data }
 
 ##################################################
 # BUILD & EXECUTE
@@ -88,16 +92,16 @@ input_name    = list(data_shapes.keys())[0]
 shape_dict    = data_shapes
 
 
-frontend = 'NNVM'
+frontend = 'Relay'
 
 if frontend == 'NNVM':
-    compute_graph, params, data_layout = \
+    nnvm_graph, params, data_layout = \
         load_model_from_file(frontend, framework)\
             (model_path, data_shapes, opt_model_path)
     
-    nnvm_graph = vai.NNVMPartitioningPass(target='dpu',
+    nnvm_graph = vai.NNVMPartitioningPass(target='dpu-zcu104',
         params=params, data_shapes=shape_dict, 
-        inputs_func=inputs_func, layout=data_layout)
+        inputs_func=inputs_func, layout=data_layout)(nnvm_graph)
 
     params_dtypes = dict((k, params[k].dtype) for k in params)
 
@@ -106,7 +110,7 @@ if frontend == 'NNVM':
     dtype_dict.update(params_dtypes)
     
     graph, lib, params = nnvm.compiler.build(
-        graph, target, shape_dict, dtype_dict,
+        nnvm_graph, target, shape_dict, dtype_dict,
         params=params)
 
     lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, 
@@ -122,7 +126,7 @@ elif frontend == 'Relay':
         load_model_from_file(frontend, framework)\
             (model_path, data_shapes, opt_model_path)
 
-    mod = vai.PartitioningPass(target='dpu', params=params, 
+    mod = vai.PartitioningPass(target='dpu-zcu104', params=params, 
         inputs_func=inputs_func, layout=data_layout)(mod)
 
     graph, lib, params = relay.build_module.build(

@@ -61,11 +61,12 @@ class PartitioningPass:
     """
 
     def __init__(self, target, params, inputs_func, layout):
-
-        if target not in ['dpu', 'dpu_nocompile']: # TODO: remove dpu_nocompile
+        
+        if target not in ['dpu-ultra96', 'dpu-ultra96-nocompile', \
+                'dpu-zcu104', 'dpu-zcu104-nocompile']: # TODO: remove dpu_nocompile
             raise ValueError("Invalid target: {} for the Vitis-AI"\
-                " partitioning pass, only 'dpu' target is supported"\
-                " at the moment.".format(target))
+                " partitioning pass, only 'dpu-ultra96' and 'dpu-zcu104'"\
+                " targets are supported at the moment.".format(target))
 
         if layout not in ['NCHW', 'NHWC']:
             raise ValueError("Invalid layout: {} for Vitis-AI partitioning"\
@@ -82,13 +83,15 @@ class PartitioningPass:
         
     def transform_module(self, mod, ctx):
         
-        target = self.target
-
+        target = self.target.split("-")[0]
+        device = self.target.split("-")[1]
+        docompile = len(self.target.split("-")) <= 2
+        
         # TODO params can be found in ctx??
         xfgraph = from_relay(mod, self.params, data_layout=self.layout)
 
-        if target == 'dpu_nocompile':
-            target = 'dpu'
+        if not docompile:
+            pass
         elif target == 'dpu':
 
             # Optimize xfgraph for Tensorflow generation
@@ -97,18 +100,22 @@ class PartitioningPass:
             # Internal partitioning
             xfgraph.partition(devices=[target])
 
-            dpu_xgraph = xfgraph.schedule(device='dpu')
+            dpu_xgraph = xfgraph.schedule(device=target)
             XGraphIO.save(dpu_xgraph, os.path.join(self.work_dir, 'dpu_xgraph'))
 
             # Quantization
-            quantizer = DECENTQuantizer(xfgraph, inputs_func, self.work_dir)
+            quantizer = DECENTQuantizer(xfgraph, self.inputs_func, self.work_dir)
             netcfgs = quantizer.quantize(subgraphs_only=True)
 
             # Compilation
-            #dcf = "/dnndk/dcf/ZCU104.dcf"
-            dcf = "/dnndk/dcf/Ultra96.dcf"
+            if device.lower() == 'zcu104':
+                dcf = "/dnndk/dcf/ZCU104.dcf"
+            elif device.lower() == 'ultra96':
+                dcf = "/dnndk/dcf/Ultra96.dcf"
+            else:
+                raise ValueError("Unkwowm device: {}".format(device))
             
-            compiler = DNNCCompiler(xfgraph, netcfgs=netcfgs, dcf=dcf)
+            compiler = DNNCCompiler(xfgraph, netcfgs=netcfgs, dcf=dcf, work_dir=self.work_dir)
             compiler.compile()
 
         else:
@@ -120,6 +127,7 @@ class PartitioningPass:
             path=self.work_dir,
             output_layout=self.layout,           
             model_name="model_name?",
+            platform=target,
             output_layers=[]
         )
 
@@ -128,10 +136,8 @@ class PartitioningPass:
 
     def reconst_graph(self, mod, path, output_layout, model_name, platform, output_layers=None):
 
-        #pdb.set_trace()
         node_map={}
         xdnn_inputs = []
-
         if platform == 'dpu':
             compiler_json_file = path + "/dpu_xgraph.json"
             dnn_name           = path + "/dnnc_comp_xp0.json"
@@ -156,15 +162,11 @@ class PartitioningPass:
             graph_inputs  = json_graph["inputs"]
             graph_outputs = json_graph["outputs"]
             
-
-            #pdb.set_trace()
             compiler_shape_output = json_graph["network"][-1]["outputshapes"]
 
-            
         xfuse_inputs=[]
         fuse_list=[]
         queue=[]
-
         if platform == 'dpu':
             input_list = graph_inputs
         else:
@@ -179,7 +181,6 @@ class PartitioningPass:
             output_hash = self.extract_hash(output,'previous_layers')
             expr = self.traverse(expr,output_hash, input_list, output_layout, compiler_shape_output, path, model_name)
         
-        #pdb.set_trace()
         # ADD ANY LAYERS NECESSARY AT THE END BASED ON THE OUTPUT_LAYERS LIST
         if output_layers:
             for layer in output_layers:
@@ -191,7 +192,6 @@ class PartitioningPass:
         return mod
 
     def extract_hash(self,name, key):
-        #pdb.set_trace()
         if key == 'input_name':
             val = name[key].split('-')
         else:
@@ -200,7 +200,6 @@ class PartitioningPass:
         try:
             return int(val[0])
         except (ValueError):
-            #pdb.set_trace()
             if len(val) == 1:
                 return val[0]
             else:
@@ -211,8 +210,6 @@ class PartitioningPass:
     # TODO: NEED TO CREATE AN ARRAY TO RETURN
     # WHEN THERE ARE MULTIPLE INPUTS
     def recurse(self, expr, input_list):
-        #pdb.set_trace()
-        print(type(expr))
         if (isinstance(expr,  tvm.relay.expr.Function)):
             print (expr.params)
             print (expr.body)
@@ -230,7 +227,6 @@ class PartitioningPass:
             return None
         
         elif (isinstance(expr,tvm.relay.expr.TupleGetItem)):
-            #pdb.set_trace()
             if (hash(expr) in input_list):
                 print("returning %s expr" %(expr.index))
                 return expr
@@ -242,7 +238,6 @@ class PartitioningPass:
                 input_name = int(expr.name_hint)
             except (ValueError):
                 if expr.name_hint == 'data':
-                    pdb.set_trace()
                     input_name = 'data'
                 else:
                     input_name = None
@@ -263,7 +258,6 @@ class PartitioningPass:
                     return None    
             
         else:
-            #pdb.set_trace()
             print("Missing condition to handle node type %s", type(expr))
 
 
@@ -277,14 +271,13 @@ class PartitioningPass:
                 input_node = self.recurse(node,input_list)
                 if(input_node is not None):
                     print("--debug: found input node")
-                    #pdb.set_trace()
 
                     if output_layout == 'NHWC':
                         output_shape = (1,output_shape[2],output_shape[3],output_shape[1])
                     else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
                         output_shape = (1,output_shape[1],output_shape[2],output_shape[3])   
 
-                    op = relay.nn.accel([input_node],output_layout=output_layout,path=path,model_name = model_name, output_shape=output_shape)
+                    op = relay.nn.accel([input_node],layout=output_layout,output_shape=output_shape)
                 
                     return op
                 

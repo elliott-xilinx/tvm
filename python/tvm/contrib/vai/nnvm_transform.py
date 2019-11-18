@@ -17,6 +17,8 @@
 
 """ Vitis-AI NNVM partitioning for Xilinx FPGA acceleration """
 
+import os
+import json
 import nnvm
 import nnvm.symbol as sym
 
@@ -72,6 +74,7 @@ class NNVMPartitioningPass(object):
         self.params = params
         self.data_shapes = data_shapes
         self.inputs_func = inputs_func
+        self.layout = layout
 
         self.work_dir = '/tmp/vai'
         os.makedirs(self.work_dir, exist_ok=True)
@@ -84,7 +87,7 @@ class NNVMPartitioningPass(object):
 
         # TODO params can be found in ctx??
         xfgraph = from_nnvm(graph, self.params, 
-            shapes = data_shapes,
+            shapes = self.data_shapes,
             data_layout=self.layout)
 
         if not docompile:
@@ -123,7 +126,7 @@ class NNVMPartitioningPass(object):
 
         # Relay partitioning
         mod = self.graph_reconst(
-            nnvm_graph=graph,
+            nnvm_graph=graph.index.nodes,
             path=self.work_dir,
             output_layout=self.layout,
             platform=target,
@@ -132,7 +135,7 @@ class NNVMPartitioningPass(object):
 
         return mod
     
-    def graph_reconst(path, nnvm_graph, output_layout, output_layers=None, 
+    def graph_reconst(self, path, nnvm_graph, output_layout, output_layers=None, 
                       platform='xdnn'): 
         """
         Function to pass through NNVM graph, trim nodes and create 
@@ -241,13 +244,11 @@ class NNVMPartitioningPass(object):
                                             compiler_shape_output[3])   
 
                         new_entry = sym.accel(*accel_inputs,
-                                            path          = path,
                                             kernel_name   = kernel_name,
-                                            input_names   = input_names,
-                                            output_names  = output_names,
+                                            input_name   = input_names,
+                                            output_name  = output_names,
                                             output_shape  = output_shape,
-                                            output_layout = output_layout,
-                                            platform      = platform)
+                                            layout = output_layout)
 
                         node_map[nid] = new_entry
             else:
@@ -273,7 +274,7 @@ class NNVMPartitioningPass(object):
         # ASSUMING THE LAST NODE IS ALWAYS THE OUTPUT
         return nnvm.graph.create(node_map_list[-1][1])
 
-    def fuse(graph, xfuse_inputs, input_list, queue, fuse_list, count, platform):
+    def fuse(self, graph, xfuse_inputs, input_list, queue, fuse_list, count, platform):
         """
         Parse graph and find nodes between compiler input and output nodes
         """
