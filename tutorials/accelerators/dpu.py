@@ -105,8 +105,11 @@ elif frontend == 'Relay':
         load_model_from_file(frontend, framework)\
             (model_path, data_shapes, opt_model_path)
 
-    graph, lib, params = vai.PartitionPass(target='dpu', params=params, 
+    mod = vai.PartitioningPass(target='dpu', params=params, 
         inputs_func=inputs_func, layout=data_layout)
+
+    graph, lib, params = relay.build_module.build(
+        mod, target, params=params)
 
     # SAVE NNVM/TVM OUTPUT
     lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, cc="/usr/aarch64-linux-gnu/bin/ld")
