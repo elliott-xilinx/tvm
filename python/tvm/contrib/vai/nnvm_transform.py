@@ -17,6 +17,7 @@
 
 """ Vitis-AI NNVM partitioning for Xilinx FPGA acceleration """
 
+import os
 import nnvm
 import nnvm.symbol as sym
 

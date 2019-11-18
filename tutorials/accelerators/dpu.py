@@ -97,7 +97,7 @@ if frontend == 'NNVM':
         load_model_from_file(frontend, framework)\
             (model_path, data_shapes, opt_model_path)
     
-    nnvm_graph = vai.NNVMPartitioningPass(target='dpu',
+    nnvm_graph = vai.NNVMPartitioningPass(target='dpu-ultra96',
         params=params, data_shapes=shape_dict, 
         inputs_func=inputs_func, layout=data_layout)
 
@@ -108,7 +108,7 @@ if frontend == 'NNVM':
     dtype_dict.update(params_dtypes)
     
     graph, lib, params = nnvm.compiler.build(
-        graph, target, shape_dict, dtype_dict,
+        nnvm_graph, target, shape_dict, dtype_dict,
         params=params)
 
     lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, 
