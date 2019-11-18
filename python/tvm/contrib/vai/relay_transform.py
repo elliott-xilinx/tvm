@@ -116,7 +116,7 @@ class PartitioningPass:
 
         # Relay partitioning
         mod = self.reconst_graph(
-            mode=mod,
+            mod=mod,
             path=self.work_dir,
             output_layout=self.layout,           
             model_name="model_name?",
@@ -132,7 +132,7 @@ class PartitioningPass:
         node_map={}
         xdnn_inputs = []
 
-        if platform == 'DPU':
+        if platform == 'dpu':
             compiler_json_file = path + "/dpu_xgraph.json"
             dnn_name           = path + "/dnnc_comp_xp0.json"
             with open(compiler_json_file) as json_file:
@@ -165,7 +165,7 @@ class PartitioningPass:
         fuse_list=[]
         queue=[]
 
-        if platform == 'DPU':
+        if platform == 'dpu':
             input_list = graph_inputs
         else:
             input_list = [self.extract_hash(n,'input_name') for n in graph_inputs]

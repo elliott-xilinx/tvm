@@ -20,4 +20,4 @@
 from . import base
 
 from .relay_transform import PartitioningPass
-from .nnvm_transform import graph_reconst
+from .nnvm_transform import NNVMPartitioningPass

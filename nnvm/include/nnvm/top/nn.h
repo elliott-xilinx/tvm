@@ -552,31 +552,20 @@ struct L2NormalizeParam : public dmlc::Parameter<L2NormalizeParam> {
 
 
 struct ACCELParam : public dmlc::Parameter<ACCELParam> {
-  std::string output_layout;
-  std::string path;
-  Tuple<int> output_shape;
-  std::string platform;
-  std::string input_names;
-  std::string output_names;
+  std::string layout;
+  std::string input_name;
+  std::string output_name;
   std::string kernel_name;
 
-
   DMLC_DECLARE_PARAMETER(ACCELParam) {
-    DMLC_DECLARE_FIELD(output_layout)
+    DMLC_DECLARE_FIELD(layout)
       .describe("Layout of the output node");
-    DMLC_DECLARE_FIELD(path)
-      .describe("Path to the xdnn compiler generated files");
-    DMLC_DECLARE_FIELD(output_shape)
-      .describe("Shape of the output node");
-    DMLC_DECLARE_FIELD(platform).set_default("XDNN")
-      .describe("Hardware acceleration framework to run the node");
     DMLC_DECLARE_FIELD(kernel_name)
       .describe("Kernel name");
-    DMLC_DECLARE_FIELD(input_names)
-      .describe("Input names");
-    DMLC_DECLARE_FIELD(output_names)
-      .describe("Output_names");
-
+    DMLC_DECLARE_FIELD(input_name)
+      .describe("Input name");
+    DMLC_DECLARE_FIELD(output_name)
+      .describe("Output_name");
   }
 };
 

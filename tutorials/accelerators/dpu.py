@@ -15,10 +15,6 @@ import nnvm
 import tvm.relay as relay
 from tvm.contrib import vai
 
-def softmax(x):
-    x_exp = np.exp(x - np.max(x))
-    return x_exp / x_exp.sum()
-
 ##################################################
 # MODEL SETTINGS
 ##################################################
@@ -98,7 +94,28 @@ if frontend == 'NNVM':
     compute_graph, params, data_layout = \
         load_model_from_file(frontend, framework)\
             (model_path, data_shapes, opt_model_path)
-    raise NotImplementedError("")
+    
+    nnvm_graph = vai.NNVMPartitioningPass(target='dpu',
+        params=params, data_shapes=shape_dict, 
+        inputs_func=inputs_func, layout=data_layout)
+
+    params_dtypes = dict((k, params[k].dtype) for k in params)
+
+    input_type    = 'float32'
+    dtype_dict    = {input_name: input_type }
+    dtype_dict.update(params_dtypes)
+    
+    graph, lib, params = nnvm.compiler.build(
+        graph, target, shape_dict, dtype_dict,
+        params=params)
+
+    lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, 
+        cc="/usr/aarch64-linux-gnu/bin/ld")
+    with open("tvm_dpu_cpu.json","w") as f:
+        f.write(graph.json())
+
+    with open("tvm_dpu_cpu.params", "wb") as f:
+        f.write(relay.save_param_dict(params))
 
 elif frontend == 'Relay':
     mod, params, data_layout = \
@@ -106,13 +123,14 @@ elif frontend == 'Relay':
             (model_path, data_shapes, opt_model_path)
 
     mod = vai.PartitioningPass(target='dpu', params=params, 
-        inputs_func=inputs_func, layout=data_layout)
+        inputs_func=inputs_func, layout=data_layout)(mod)
 
     graph, lib, params = relay.build_module.build(
         mod, target, params=params)
 
     # SAVE NNVM/TVM OUTPUT
-    lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, cc="/usr/aarch64-linux-gnu/bin/ld")
+    lib.export_library("tvm_dpu_cpu.so", contrib.cc.create_shared, 
+        cc="/usr/aarch64-linux-gnu/bin/ld")
     with open("tvm_dpu_cpu.json","w") as f:
         f.write(graph)
 
