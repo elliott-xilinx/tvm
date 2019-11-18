@@ -239,6 +239,8 @@ class PartitioningPass:
             except (ValueError):
                 if expr.name_hint == 'data':
                     input_name = 'data'
+                elif expr.name_hint == 'Placeholder':
+                    input_name = 'Placeholder'
                 else:
                     input_name = None
 
