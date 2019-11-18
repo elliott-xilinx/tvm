@@ -1,15 +1,27 @@
-"""xDNN implementation of NN operations that can be accelerated"""
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
+""" Implementation of external Vitis-AI accel operation """
 
-import tvm
-import numpy as np
-import pdb
-from ctypes import *
-import ctypes
 import os
+import tvm
 import warnings
+import numpy as np
 
-# TEMP
 try:
     import xfdnn.rt.xdnn as xdnn
     import xfdnn.rt.xdnn_io as xdnn_io
@@ -21,64 +33,54 @@ try:
     from dnndk import n2cube, dputils
 except:
     warnings.warn("Could not import dnndk n2cube")
-    
-# TODO: ADD MODEL NAME FOR NNVM
+
+
 @tvm.register_func("tvm.accel.accel_fused")
-def accel_fused(graph_path, output_layout, model_name, platform, out, *ins ):
+def accel_fused(graph_path, kernel_name, input_name, output_name, 
+    output_layout, model_name, platform, out, *ins):
 
-    #pdb.set_trace()
-    # TEMP
-    print(platform)
-
+    #print(kernel_name, input_name, output_name)
 
     if platform == "DPU":
 
-
-        kernel_name = "xp0"
-        input_name  = "xinput0"
-        output_name = "resnet_v1_50/logits/Conv2D"
-
-        """ Attach to DPU driver and prepare for running """
+        # Attach to DPU driver and prepare for running
         n2cube.dpuOpen()
         
-        """ Create DPU Kernels for CONV NODE in imniResNet """
+        # Create DPU Kernels
         kernel = n2cube.dpuLoadKernel(kernel_name)
 
-        """ Create DPU Tasks for CONV NODE in miniResNet """
+        # Create DPU Tasks for kernel
         task = n2cube.dpuCreateTask(kernel, 0)
 
+        # Load image to DPU
+        X = ins[0].asnumpy().reshape((-1))
+        n2cube.dpuSetInputTensorInHWCFP32(task, input_name, X, len(X))
 
-        """ Load image to DPU in (CHW or HWC format) """
-        n2cube.dpuSetInputTensorInHWCFP32(task, input_name, ins[0], len(ins[0]))
-
-        """ Model run on DPU """
+        # Model run on DPU """
         n2cube.dpuRunTask(task)
         
-        """ Get the output tensor size from FC output """
+        # Get the output tensor size 
         size = n2cube.dpuGetOutputTensorSize(task, output_name)
         address = n2cube.dpuGetOutputTensorAddress(task, output_name)
-        
 
         value = [0 for i in range(size)]
 
         n2cube.dpuGetTensorData (address, value, size)
         scale = n2cube.dpuGetOutputTensorScale(task, output_name, idx=0)
         value = np.array(value).astype(np.float32)/scale
-        
 
-        # DEFAULT DPU OUTPUT IS NHWC
-        if layout == 'NCHW':
+        # DPU output is in NHWC
+        if output_layout == 'NCHW':
             value = np.transpose(value,(0,3,1,2))
 
         
-    else:
+    elif platform == 'XDNN':
         # CREATE A HANDLE FOR FPGA COMMUNICATION
         platform = os.environ.get('MLSUITE_PLATFORM')#"alveo-u200"
-        xclbin = "/workspace/MLsuite/overlaybins/" + platform + "/overlay_4.xclbin"
-    
-        #if (isinstance(graph_path,str)):
-        path   = graph_path    #c_char_p(graph_path.value).value
-        layout = output_layout #c_char_p(output_layout.value).value
+        xclbin = "/workspace/MLsuite/overlaybins/" + platform.lower() + "/overlay_4.xclbin"
+
+        path   = graph_path  
+        layout = output_layout 
         
         args_dict = {
             'xclbin'     : xclbin,
@@ -96,14 +98,8 @@ def accel_fused(graph_path, output_layout, model_name, platform, out, *ins ):
         ret, handles = xdnn.createHandle(xclbin)
      
         if ret != 0:
-            print("ERROR: Unable to create handle to FPGA")
-            return
-        else:
-            print("INFO: Successfully created handle to FPGA")
-     
- 
-     
-        print("PATH=",path)
+            raise ValueError("ERROR: Unable to create handle to FPGA")
+        
         args = xdnn_io.make_dict_args(args_dict)
      
         fpgaRT = xdnn.XDNNFPGAOp(handles,args)
@@ -117,30 +113,18 @@ def accel_fused(graph_path, output_layout, model_name, platform, out, *ins ):
         for i in range(0, len(data_paths), ins[0].shape[0]):
             for j, d in enumerate(data_paths[i:i + ins[0].shape[0]]):
                 batch_array[j, ...] = d
-            
-        ##    print(batch_array)
-     
-        # TODO HAS TO BE CHANGED FOR MULTIPLE INPUTS
+        
         fpgaInput[list(fpgaInput.keys())[0]] = batch_array
-        ##    print(fpgaInput)
      
-        # WRITE FPGA INSTRUCTIONS TO FPGA AND EXECUTE THE NETWORK!
-        #print(fpgaOutput)
+        # Execute xdnn
         fpgaRT.execute(fpgaInput, fpgaOutput)
-     
-     
-        # GET OUTPUT
+
         key, value  = fpgaOutput.popitem()
      
-        # DEFAULT FPGA OUTPUT LAYOUT IS NCHW
+        # xDNN output is in NCHW format
         if str(layout) == 'NHWC':
             value = np.transpose(value,(0,2,3,1))
-
-
+    else:
+        raise ValueError("Unknown platform: {}".format(platform))
         
     tvm.nd.array(value).copyto(out)
-     
-    print(" -- debug: tvm_reg_func done ")
-
-
-
