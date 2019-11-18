@@ -60,7 +60,7 @@ def fuse(graph, xfuse_inputs, input_list,queue, fuse_list, count, platform):
 # FUNCTION TO PARSE THROUGH THE NNVM GRAPH,
 # TRIM NODES BASED ON THE OUTPUT OF EXTERNAL COMPILER,
 # AND CREATE A NEW NNVM GRAPH
-def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=None, platform = 'XDNN'): 
+def graph_reconst(path, nnvm_graph, output_layout, output_layers=None, platform = 'XDNN'): 
     node_map={}
     accel_inputs = []
 
@@ -81,16 +81,25 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                 output_names          = node['LayerParameter']['attrs']['output_names']
                 graph_inputs          = node['LayerParameter']['attrs']['input_layers'][input_names[0]]
                 graph_outputs         = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
-                compiler_shape_output = node['LayerParameter']['shapes'] 
+                compiler_shape_output = node['LayerParameter']['shapes']
+
+
+        input_names  = dnnc_comp_d[input_names[0] ]
+        output_names = dnnc_comp_d[output_names[0]]
+        
                 
     else:
-        compiler_json_file = path + "/work/" + model_name + "_compiler.json"
+        compiler_json_file = path + "/_compiler.json"
         with open(compiler_json_file) as json_file:
             json_graph = json.load(json_file)
         
         graph_inputs          = json_graph["inputs"]
         graph_outputs         = json_graph["outputs"]                                         
         compiler_shape_output = json_graph["network"][-1]["outputshapes"]
+
+        kernel_name  = ""
+        input_names  = ""
+        output_names = ""
         
     xfuse_inputs=[]
     fuse_list=[]
@@ -156,11 +165,10 @@ def graph_reconst(path, nnvm_graph, output_layout, model_name, output_layers=Non
                     new_entry = sym.accel(*accel_inputs,
                                           path          = path,
                                           kernel_name   = kernel_name,
-                                          input_names   = dnnc_comp_d[input_names[0] ],
-                                          output_names  = dnnc_comp_d[output_names[0]],
+                                          input_names   = input_names,
+                                          output_names  = output_names,
                                           output_shape  = output_shape,
                                           output_layout = output_layout,
-                                          model_name    = model_name,
                                           platform      = platform)
 
                     node_map[nid] = new_entry

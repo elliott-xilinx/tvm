@@ -555,7 +555,6 @@ struct ACCELParam : public dmlc::Parameter<ACCELParam> {
   std::string output_layout;
   std::string path;
   Tuple<int> output_shape;
-  std::string model_name;
   std::string platform;
   std::string input_names;
   std::string output_names;
@@ -569,8 +568,6 @@ struct ACCELParam : public dmlc::Parameter<ACCELParam> {
       .describe("Path to the xdnn compiler generated files");
     DMLC_DECLARE_FIELD(output_shape)
       .describe("Shape of the output node");
-    DMLC_DECLARE_FIELD(model_name)
-      .describe("Model name");
     DMLC_DECLARE_FIELD(platform).set_default("XDNN")
       .describe("Hardware acceleration framework to run the node");
     DMLC_DECLARE_FIELD(kernel_name)

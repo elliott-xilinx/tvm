@@ -36,7 +36,7 @@ except:
 
 
 @tvm.register_func("tvm.accel.accel_fused")
-def accel_fused(graph_path, kernel_name, input_name, output_name, 
+def accel_fused(path, kernel_name, input_name, output_name, 
     output_layout, model_name, platform, out, *ins):
 
     #print(kernel_name, input_name, output_name)
@@ -79,14 +79,13 @@ def accel_fused(graph_path, kernel_name, input_name, output_name,
         platform = os.environ.get('MLSUITE_PLATFORM')#"alveo-u200"
         xclbin = "/workspace/MLsuite/overlaybins/" + platform.lower() + "/overlay_4.xclbin"
 
-        path   = graph_path  
         layout = output_layout 
         
         args_dict = {
             'xclbin'     : xclbin,
-            'netcfg'     : str(path + model_name + "_compiler.json" ),
-            'quantizecfg': str(path + model_name + "_quantizer.json"),
-            'weights'    : str(path + model_name + "_weights.h5"    ), 
+            'netcfg'     : str(path + "/_compiler.json" ),
+            'quantizecfg': str(path + "/_quantizer.json"),
+            'weights'    : str(path + "/_weights.h5"    ), 
             'scaleA'     : 1,
             'scaleB'     : 1,
             'PE'         : 0,

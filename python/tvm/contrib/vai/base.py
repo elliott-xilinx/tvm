@@ -41,8 +41,8 @@ def compute_accel(attrs, inputs, outputs):
     out = tvm.extern(outputs[0].shape, inputs, 
         lambda ins, outs: tvm.call_packed(
             'tvm.accel.accel_fused', attrs['path'], attrs['kernel_name'],
-            attrs['input_names'], attrs['output_names'], attrs['output_layout'], 
-            attrs['model_name'], attrs['platform'], outs[0], *ins ), 
+            attrs['input_names'], attrs['output_names'], attrs['output_layout'],
+            attrs['platform'], outs[0], *ins ), 
         name=name)
     
     return out
