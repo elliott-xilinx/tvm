@@ -242,8 +242,9 @@ class PartitioningPass:
                 input_name = int(expr.name_hint)
             except (ValueError):
                 if expr.name_hint == 'data':
-                    pdb.set_trace()
                     input_name = 'data'
+                elif expr.name_hint == 'Placeholder':
+                    input_name = 'Placeholder'
                 else:
                     input_name = None
 
