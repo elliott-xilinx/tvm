@@ -63,7 +63,7 @@ class PartitioningPass:
     def __init__(self, target, params, inputs_func, layout):
         
         if target not in ['dpu-ultra96', 'dpu-ultra96-nocompile', \
-                'dpu-zcu104', 'dpu-zcu104-nocompile']: # TODO: remove dpu_nocompile
+                'dpu-zcu104', 'dpu-zcu104-nocompile']: 
             raise ValueError("Invalid target: {} for the Vitis-AI"\
                 " partitioning pass, only 'dpu-ultra96' and 'dpu-zcu104'"\
                 " targets are supported at the moment.".format(target))
@@ -101,10 +101,12 @@ class PartitioningPass:
             xfgraph.partition(devices=[target])
 
             dpu_xgraph = xfgraph.schedule(device=target)
-            XGraphIO.save(dpu_xgraph, os.path.join(self.work_dir, 'dpu_xgraph'))
+            XGraphIO.save(dpu_xgraph, os.path.join(self.work_dir, 
+                'dpu_xgraph'))
 
             # Quantization
-            quantizer = DECENTQuantizer(xfgraph, self.inputs_func, self.work_dir)
+            quantizer = DECENTQuantizer(xfgraph, self.inputs_func, 
+                self.work_dir)
             netcfgs = quantizer.quantize(subgraphs_only=True)
 
             # Compilation
@@ -115,7 +117,8 @@ class PartitioningPass:
             else:
                 raise ValueError("Unkwowm device: {}".format(device))
             
-            compiler = DNNCCompiler(xfgraph, netcfgs=netcfgs, dcf=dcf, work_dir=self.work_dir)
+            compiler = DNNCCompiler(xfgraph, netcfgs=netcfgs, dcf=dcf, 
+                work_dir=self.work_dir)
             compiler.compile()
 
         else:
@@ -125,20 +128,35 @@ class PartitioningPass:
         mod = self.reconst_graph(
             mod=mod,
             path=self.work_dir,
-            output_layout=self.layout,           
-            model_name="model_name?",
-            platform=target,
+            layout=self.layout,           
+            target=target,
             output_layers=[]
         )
 
         return mod
 
 
-    def reconst_graph(self, mod, path, output_layout, model_name, platform, output_layers=None):
+    def reconst_graph(self, mod, path, layout, target, output_layers=None):
+        """
+        Create a partitioned Relay module for acceleration
+
+        Arguments
+        ---------
+        mod: Relay module
+            the Relay module to be partitioned
+        path: str
+            the path to the compilation and quantization files
+        layout: str
+            the layout of the graph
+        target: str
+            the acceleration target
+        output_layers: List[str]
+            the list of output layers to be added at the end of the expression
+        """
 
         node_map={}
         xdnn_inputs = []
-        if platform == 'dpu':
+        if target == 'dpu':
             compiler_json_file = path + "/dpu_xgraph.json"
             dnn_name           = path + "/dnnc_comp_xp0.json"
             with open(compiler_json_file) as json_file:
@@ -148,14 +166,16 @@ class PartitioningPass:
         
             for node in json_graph['nodes']:
                 if node['LayerParameter']['type'][0] == 'DPU':
-                    kernel_name           = node['name']
-                    input_names           = node['LayerParameter']['attrs']['input_names']
-                    output_names          = node['LayerParameter']['attrs']['output_names']
-                    graph_inputs          = node['LayerParameter']['attrs']['input_layers'][input_names[0]]
-                    graph_outputs         = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
+                    attrs = node['LayerParameter']['attrs']
+
+                    kernel_name   = node['name']
+                    input_names   = attrs['input_names']
+                    output_names  = attrs['output_names']
+                    graph_inputs  = attrs['input_layers'][input_names[0]]
+                    graph_outputs = attrs['output_layers'][output_names[0]][-1]]
                     compiler_shape_output = node['LayerParameter']['shapes'] 
         else:
-            compiler_json_file = path + "/work/" +  model_name + "_compiler.json"
+            compiler_json_file = path + "/work/" + model_name + "_compiler.json"
             with open(compiler_json_file) as json_file:
                 json_graph = json.load(json_file)
         
@@ -167,31 +187,33 @@ class PartitioningPass:
         xfuse_inputs=[]
         fuse_list=[]
         queue=[]
-        if platform == 'dpu':
+        if target == 'dpu':
             input_list = graph_inputs
         else:
             input_list = [self.extract_hash(n,'input_name') for n in graph_inputs]
 
         expr = mod.functions[mod.get_global_var('main')]
         expr = expr.body
-        #traverse(expr)
-        for output in graph_outputs:
-            # TODO: PREVIOUS_LAYERS IS NOT A GOOD CHOICE OF GETTING THE OUTPUT NAME
-            # WILL NEED TO CHANGE LATER
-            output_hash = self.extract_hash(output,'previous_layers')
-            expr = self.traverse(expr,output_hash, input_list, output_layout, compiler_shape_output, path, model_name)
         
-        # ADD ANY LAYERS NECESSARY AT THE END BASED ON THE OUTPUT_LAYERS LIST
+        for output in graph_outputs:
+            output_hash = self.extract_hash(output, 'previous_layers')
+            expr = self.traverse(expr, output_hash, input_list, layout, 
+                compiler_shape_output, path, model_name)
+        
+        # Possibly add output_layers at the end (softmax)
         if output_layers:
             for layer in output_layers:
                 if layer =='Softmax':
                     expr = relay.nn.softmax(expr)
+                else:
+                    raise ValueError("Unsupported output layer: {} provided"
+                        .format(layer))
     
         mod = relay.Module.from_expr(expr)
 
         return mod
 
-    def extract_hash(self,name, key):
+    def extract_hash(self, name, key):
         if key == 'input_name':
             val = name[key].split('-')
         else:
@@ -204,21 +226,16 @@ class PartitioningPass:
                 return val[0]
             else:
                 return int(val[1])
-
-
-
-    # TODO: NEED TO CREATE AN ARRAY TO RETURN
-    # WHEN THERE ARE MULTIPLE INPUTS
+    
     def recurse(self, expr, input_list):
+        """
+        Recursively find expression input nodes in provided input list
+        """
         if (isinstance(expr,  tvm.relay.expr.Function)):
-            print (expr.params)
-            print (expr.body)
             return self.recurse(expr.body, name)
         
         elif (isinstance(expr, tvm.relay.expr.Call)):
-            print(expr.op)
             if (hash(expr) in input_list):
-                print("returning %s expr" %(expr.op))
                 return expr
             for node in expr.args:
                 ret = self.recurse(node, input_list)
@@ -228,24 +245,13 @@ class PartitioningPass:
         
         elif (isinstance(expr,tvm.relay.expr.TupleGetItem)):
             if (hash(expr) in input_list):
-                print("returning %s expr" %(expr.index))
                 return expr
             return self.recurse(expr.tuple_value, input_list)
         
         elif (isinstance(expr,tvm.relay.expr.Var)):
-            print(expr.name_hint)
-            try:
-                input_name = int(expr.name_hint)
-            except (ValueError):
-                if expr.name_hint == 'data':
-                    input_name = 'data'
-                elif expr.name_hint == 'Placeholder':
-                    input_name = 'Placeholder'
-                else:
-                    input_name = None
+            input_name = expr.name_hint
 
             if (hash(expr) in input_list or input_name in input_list):
-                print("returning %s expr" %(expr.name_hint))
                 return expr
             else:
                 return None
@@ -260,26 +266,40 @@ class PartitioningPass:
                     return None    
             
         else:
-            print("Missing condition to handle node type %s", type(expr))
+            raise ValueError("Missing condition to handle node type %s", type(expr))
 
 
         
-    def traverse(self,expr, output_hash, input_list, output_layout, output_shape, path, model_name):
-    
-        #assert (isinstance(expr, tvm.relay.expr.Call))
+    def traverse(self, expr, output_hash, input_list, layout, 
+                 output_shape, path):
+        """
+        Traverse through Relay expression to find input and output expressions
+        and recreate expression
+
+        expr: Relay expression
+            the expression to be traversed
+        output_hash: int
+            the hash of the ouput expression
+        input_list: List[int/str]
+            the list of input hashes or names
+        layout: str
+            the expression layout
+        output_shape: List[int]
+            the shape of the output
+        path: str
+            the path to the quantization and compilation files
+        """
         if (hash(expr) == output_hash):
-            print("--debug: found ouptut name")
             for node in expr.args:
                 input_node = self.recurse(node,input_list)
-                if(input_node is not None):
-                    print("--debug: found input node")
 
-                    if output_layout == 'NHWC':
+                if(input_node is not None):
+                    if layout == 'NHWC':
                         output_shape = (1,output_shape[2],output_shape[3],output_shape[1])
                     else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
                         output_shape = (1,output_shape[1],output_shape[2],output_shape[3])   
 
-                    op = relay.nn.accel([input_node],layout=output_layout,output_shape=output_shape)
+                    op = relay.nn.accel([input_node],layout=layout,output_shape=output_shape)
                 
                     return op
                 
@@ -292,28 +312,28 @@ class PartitioningPass:
 
             elif (isinstance(expr, tvm.relay.expr.Call)):
                 for node in expr.args:
-                    output_node = self.traverse(node,output_hash,input_list, output_layout, output_shape, path, model_name)
+                    output_node = self.traverse(node, output_hash, input_list, layout, 
+                        output_shape, path)
                     if (output_node is not None):
                         break
-                # CASES WHERE THE OUTPUT_NODE IS NOT IN THE CHOSEN BRANCH OF THE GRAPH
+                # Case where the output node is not the chosen branch of the expression
                 if output_node is None:
                     return output_node
                 
             elif(isinstance(expr,tvm.relay.expr.TupleGetItem)):
-                return traverse(expr.tuple_value, output_hash,input_list,output_layout,output_shape, path, model_name)
+                return self.traverse(expr.tuple_value, output_hash, input_list, layout,
+                    output_shape, path, model_name)
         
             elif(isinstance(expr,tvm.relay.expr.Tuple)):
                 return None
-            #return traverse(expr.fields, output_hash,input_list,output_layout,output_shape)
+            
             elif(isinstance(expr,tvm.relay.expr.Var)):
                 return None
             else:
-                print("-- Warning: Encoutered an unknown node type %s while traversing the graph",type(arg))
                 return None
-
-
             
-            #RECONSTRUCT THE GRAPH BY RECREATING THE NON-PARTITIONED NODES
+            # Reconstruct the graph by recreating the nodes outside the subgraph
+            #   found by partitioning
             if (isinstance(expr, tvm.relay.expr.Call)):
             
                 children=[]
@@ -331,8 +351,8 @@ class PartitioningPass:
                 new_node = relay.Call(expr.op,children,expr.attrs,expr.type_args)
 
             else:
-                assert isinstance(expr, tvm.relay.expr.Call), print("Condition to reconstruct node type %s has not been implemented", type(expr) )
+                assert isinstance(expr, tvm.relay.expr.Call), \
+                    raise NotImplementedError("Condition to reconstruct node"
+                        " type %s has not been implemented", type(expr))
 
-         
-            
         return new_node

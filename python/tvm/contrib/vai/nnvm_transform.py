@@ -36,21 +36,21 @@ from xfgraph.contrib.dnndk.dnnc_compiler import DNNCCompiler
 class NNVMPartitioningPass(object):
 
     """
-    The Vitis-AI NNVM partitioning pass
+    The Vitis-AI NNVM partitioning pass for converting a NNVM graph to a
+    Vitis-AI accelerated NNVM graph
 
     Arguments
     ---------
     target: str
         the target accelerator, only 'dpu' is supported at the moment
-
     params: dict from str to array
         the relay model parameters
-
+    data_shapes: dict[str:List[int]]
+        dictionary containing the data shapes of the inputs
     inputs_func: function
         a python function which takes an iterator number and a layout and 
         provides a numpy array of inputs to be used for quantization 
         calibration
-
     layout: str
         the layout of the Relay model, only 'NCHW' and 'NHWC' supported 
         at the moment
@@ -59,8 +59,8 @@ class NNVMPartitioningPass(object):
 
     def __init__(self, target, params, data_shapes, inputs_func, layout):
 
-        if target not in ['dpu-ultra96', 'dpu-ultra96-nocompile', \
-                'dpu-zcu104', 'dpu-zcu104-nocompile']: # TODO: remove dpu_nocompile
+        if target not in ['dpu-ultra96', 'dpu-ultra96-skipcompile', \
+                'dpu-zcu104', 'dpu-zcu104-skipcompile']: # TODO: remove dpu_nocompile
             raise ValueError("Invalid target: {} for the Vitis-AI"\
                 " partitioning pass, only 'dpu-ultra96' and 'dpu-zcu104'"\
                 " targets are supported at the moment.".format(target))
@@ -80,6 +80,19 @@ class NNVMPartitioningPass(object):
         os.makedirs(self.work_dir, exist_ok=True)
 
     def __call__(self, graph):
+        """
+        Partition the provided NNVM graph
+
+        Arguments
+        ---------
+        graph: NNVM graph
+            the NNVM graph to be partitioned
+
+        Returns
+        -------
+        graph: NNVM graph
+            the partitioned NNVM graph
+        """
 
         target = self.target.split("-")[0]
         device = self.target.split("-")[1]
@@ -124,48 +137,65 @@ class NNVMPartitioningPass(object):
         else:
             raise ValueError("Unsupported target: {}".format(target))
 
-        # Relay partitioning
-        mod = self.graph_reconst(
+        # NNVM partitioning
+        graph = self.graph_reconst(
             nnvm_graph=graph.index.nodes,
             path=self.work_dir,
-            output_layout=self.layout,
-            platform=target,
+            layout=self.layout,
+            target=target,
             output_layers=[]
         )
 
-        return mod
+        return graph
     
-    def graph_reconst(self, path, nnvm_graph, output_layout, output_layers=None, 
-                      platform='xdnn'): 
+    def graph_reconst(self, path, nnvm_graph, layout, output_layers=None, 
+                      target='xdnn'): 
         """
         Function to pass through NNVM graph, trim nodes and create 
         new NNVM graph
+
+        Arguments
+        ---------
+        path: str
+            the path to the compilation and quantization files
+        nnvm_graph: List[Node]
+            list of NNVM nodes
+        layout: str
+            the layout of the graph
+        output_layers: List[str] (optional)
+            list of output layers to be added at the end of the graph
+        target: str
+            the accelerator target
+
+        Returns
+        -------
+            a new NNVM graph for acceleration
         """
         
         node_map={}
         accel_inputs = []
 
-        if platform == 'dpu':
+        if target == 'dpu':
             compiler_json_file = path + "/dpu_xgraph.json"
             dnn_name           = path + "/dnnc_comp_xp0.json"
             with open(compiler_json_file) as json_file:
                 json_graph = json.load(json_file)
             with open(dnn_name) as json_file:
                 dnnc_comp_d = json.load(json_file)
-            
-            # TEMP
 
             for node in json_graph['nodes']:
                 if node['LayerParameter']['type'][0] == 'DPU':
-                    kernel_name           = node['name']
-                    input_names           = node['LayerParameter']['attrs']['input_names']
-                    output_names          = node['LayerParameter']['attrs']['output_names']
-                    graph_inputs          = node['LayerParameter']['attrs']['input_layers'][input_names[0]]
-                    graph_outputs         = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
+                    attrs = node['LayerParameter']['attrs']
+                    
+                    kernel_name   = node['name']
+                    input_names   = attrs['input_names']
+                    output_names  = attrs['output_names']
+                    graph_inputs  = attrs['input_layers'][input_names[0]]
+                    graph_outputs = [attrs['output_layers']\
+                        [output_names[0]][-1]]
                     compiler_shape_output = node['LayerParameter']['shapes']
 
-
-            input_names  = dnnc_comp_d[input_names[0] ]
+            input_names  = dnnc_comp_d[input_names[0]]
             output_names = dnnc_comp_d[output_names[0]]
             
                     
@@ -186,20 +216,19 @@ class NNVMPartitioningPass(object):
         fuse_list=[]
         queue=[]
 
-
-        if platform == 'dpu':
+        if target == 'dpu':
             input_list = graph_inputs
         else:
             input_list = [n['input_name'] for n in graph_inputs]
             
         for layer in graph_outputs:
 
-            if platform == 'dpu':
+            if target == 'dpu':
                 layer_name = layer
             else:
                 layer_name = layer['previous_layers'][0]
                 
-            # PARSE THROUGH THE GRAPH AND FIND THE MATCHING OUTPUT NODE
+            # Parse the graph and find the matching output node
             layer_nid=0
             for nid, node in enumerate(nnvm_graph): 
                 node_name = node["name"]
@@ -207,9 +236,11 @@ class NNVMPartitioningPass(object):
                     layer_nid=nid
             assert layer_nid != 0, "The output node was not found"
             queue.append(layer_nid)
-            self.fuse(nnvm_graph,xfuse_inputs,input_list,queue,fuse_list,0, platform)
 
-        # GRAPH RECONSTRUCTION
+            self.fuse(nnvm_graph, xfuse_inputs, input_list, queue, 
+                fuse_list, 0, target)
+
+        # Reconstruct graph
         for nid, node in enumerate(nnvm_graph):
             inputs = node["inputs"]
             attrs = node.get("attrs", {})
@@ -218,21 +249,22 @@ class NNVMPartitioningPass(object):
             get_clone = lambda c, o_n, n_n, a: getattr(nnvm.symbol, o_n)(
                 *c, name=n_n, **a)
             new_entry = None
+
             if nid in fuse_list:
                 for layer in graph_outputs:
-                    if platform == 'dpu':
+                    if target == 'dpu':
                         layern_name = layer
                     else:
                         layer_name = layer['previous_layers'][0]
                     if node_name == layer_name:
                         # CREATE ACCEL NODE
-                        if platform == 'xdnn' and output_layout == 'NHWC':
+                        if target == 'xdnn' and layout == 'NHWC':
                             output_shape = (1,
                                             compiler_shape_output[2],
                                             compiler_shape_output[3],
                                             compiler_shape_output[1])
                             
-                        elif platform == 'dpu'  and output_layout == 'NCHW':
+                        elif target == 'dpu'  and layout == 'NCHW':
                             output_shape = (1,
                                             compiler_shape_output[3],
                                             compiler_shape_output[1],
@@ -248,7 +280,7 @@ class NNVMPartitioningPass(object):
                                             input_name   = input_names,
                                             output_name  = output_names,
                                             output_shape  = output_shape,
-                                            layout = output_layout)
+                                            layout = layout)
 
                         node_map[nid] = new_entry
             else:
@@ -262,7 +294,7 @@ class NNVMPartitioningPass(object):
                     
                 node_map[nid] = new_entry
 
-        # ADD ANY LAYERS NECESSARY AT THE END BASED ON THE OUTPUT_LAYERS LIST
+        # Possibly add output_layers at the end (softmax)
         if output_layers:
             for layer in output_layers:
                 if layer =='Softmax':
@@ -271,15 +303,17 @@ class NNVMPartitioningPass(object):
                     
         node_map_list = list(node_map.items())
 
-        # ASSUMING THE LAST NODE IS ALWAYS THE OUTPUT
+        # Assume the last node is always the output
         return nnvm.graph.create(node_map_list[-1][1])
 
-    def fuse(self, graph, xfuse_inputs, input_list, queue, fuse_list, count, platform):
+    def fuse(self, graph, xfuse_inputs, input_list, queue, fuse_list, 
+             count, target):
         """
-        Parse graph and find nodes between compiler input and output nodes
+        Recursive function for parsing graph and finding nodes between 
+        compiler input and output nodes
         """
 
-        # RETURN CONDITION
+        # Return condition
         if not queue:
             return
         
@@ -288,15 +322,16 @@ class NNVMPartitioningPass(object):
         fuse_list.append(nid)
         count = count + 1
         children = [e[0] for e in graph[nid]["inputs"]]
-        #if the nid is not visited then you could queue
+
+        # If the nid is not visited then you could queue
         for nid in children:
             inputs = graph[nid]["inputs"]
             attrs = graph[nid].get("attrs", {})
             node_name = graph[nid]["name"]
             op_name = graph[nid]["op"]
+
             if node_name in input_list:
-                #TODO: nid-1 may not be a good candidate for finding the input node
-                if platform == 'dpu':
+                if target == 'dpu':
                     fuse_list.append(nid)
                     xfuse_inputs.append(nid-1)
                 else:
@@ -304,8 +339,6 @@ class NNVMPartitioningPass(object):
             elif nid in fuse_list:
                 continue
             else:
-                #fuse_list.append(nid)
                 queue.append(nid)
 
-
-        self.fuse(graph,xfuse_inputs,input_list,queue,fuse_list,count, platform)
+        self.fuse(graph,xfuse_inputs,input_list,queue,fuse_list,count, target)
