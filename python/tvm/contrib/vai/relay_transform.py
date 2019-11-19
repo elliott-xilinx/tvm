@@ -128,20 +128,14 @@ class PartitioningPass:
         mod = self.reconst_graph(
             mod=mod,
             path=self.work_dir,
-<<<<<<< Updated upstream
             layout=self.layout,           
             target=target,
-=======
-            output_layout=self.layout,           
-            platform=target,
->>>>>>> Stashed changes
             output_layers=[]
         )
 
         return mod
 
 
-<<<<<<< Updated upstream
     def reconst_graph(self, mod, path, layout, target, output_layers=None):
         """
         Create a partitioned Relay module for acceleration
@@ -159,10 +153,6 @@ class PartitioningPass:
         output_layers: List[str]
             the list of output layers to be added at the end of the expression
         """
-=======
-    def reconst_graph(self, mod, path, output_layout, platform, output_layers=None):
->>>>>>> Stashed changes
-
         node_map={}
         xdnn_inputs = []
         if target == 'dpu':
@@ -175,29 +165,19 @@ class PartitioningPass:
         
             for node in json_graph['nodes']:
                 if node['LayerParameter']['type'][0] == 'DPU':
-<<<<<<< Updated upstream
                     attrs = node['LayerParameter']['attrs']
-
                     kernel_name   = node['name']
                     input_names   = attrs['input_names']
                     output_names  = attrs['output_names']
                     graph_inputs  = attrs['input_layers'][input_names[0]]
-                    graph_outputs = attrs['output_layers'][output_names[0]][-1]]
-                    compiler_shape_output = node['LayerParameter']['shapes'] 
-=======
-                    kernel_name           = node['name']
-                    input_names           = node['LayerParameter']['attrs']['input_names']
-                    output_names          = node['LayerParameter']['attrs']['output_names']
-                    graph_inputs          = node['LayerParameter']['attrs']['input_layers'][input_names[0]]
-                    graph_outputs         = [node['LayerParameter']['attrs']['output_layers'][output_names[0]][-1]]
+                    graph_outputs = [attrs['output_layers'][output_names[0]][-1]]
                     compiler_shape_output = node['LayerParameter']['shapes']
-
+                    
             input_names  = dnnc_comp_d[input_names[0] ]
             output_names = dnnc_comp_d[output_names[0]]
-                
->>>>>>> Stashed changes
+
         else:
-            compiler_json_file = path + "/work/" + model_name + "_compiler.json"
+            compiler_json_file = path  + "/_compiler.json"
             with open(compiler_json_file) as json_file:
                 json_graph = json.load(json_file)
         
@@ -214,14 +194,9 @@ class PartitioningPass:
         xfuse_inputs=[]
         fuse_list=[]
         queue=[]
-<<<<<<< Updated upstream
-        if target == 'dpu':
-            input_list = graph_inputs
-=======
 
-        if platform == 'dpu':
+        if target == 'dpu':
             input_list = [self.extract_hash(n,'dpu') for n in graph_inputs]
->>>>>>> Stashed changes
         else:
             input_list = [self.extract_hash(n,'input_name') for n in graph_inputs]
 
@@ -229,18 +204,13 @@ class PartitioningPass:
         expr = expr.body
         
         for output in graph_outputs:
-<<<<<<< Updated upstream
-            output_hash = self.extract_hash(output, 'previous_layers')
-            expr = self.traverse(expr, output_hash, input_list, layout, 
-                compiler_shape_output, path, model_name)
-=======
-            if platform == 'dpu':
+            if target == 'dpu':
                 output_hash = self.extract_hash(output,'dpu')
             else:
                 output_hash = self.extract_hash(output,'previous_layers')
 
-            expr = self.traverse(expr, path, output_hash, input_list, output_layout, compiler_shape_output, kernel_name, output_names,input_names, platform)
->>>>>>> Stashed changes
+            expr = self.traverse(expr, path, output_hash, input_list, layout, compiler_shape_output, kernel_name, output_names,input_names, target)
+
         
         # Possibly add output_layers at the end (softmax)
         if output_layers:
@@ -270,12 +240,7 @@ class PartitioningPass:
                 return val[0]
             else:
                 return int(val[1])
-<<<<<<< Updated upstream
-    
-=======
-
-
->>>>>>> Stashed changes
+            
     def recurse(self, expr, input_list):
         """
         Recursively find expression input nodes in provided input list
@@ -285,12 +250,8 @@ class PartitioningPass:
         
         elif (isinstance(expr, tvm.relay.expr.Call)):
             if (hash(expr) in input_list):
-<<<<<<< Updated upstream
-                return expr
-=======
                 return expr.args[0] # DPU
             
->>>>>>> Stashed changes
             for node in expr.args:
                 ret = self.recurse(node, input_list)
                 if ret is not None:
@@ -303,9 +264,6 @@ class PartitioningPass:
             return self.recurse(expr.tuple_value, input_list)
         
         elif (isinstance(expr,tvm.relay.expr.Var)):
-<<<<<<< Updated upstream
-            input_name = expr.name_hint
-=======
             try:
                 input_name = int(expr.name_hint)
             except (ValueError):
@@ -315,7 +273,6 @@ class PartitioningPass:
                     input_name = 'Placeholder'
                 else:
                     input_name = None
->>>>>>> Stashed changes
 
             if (hash(expr) in input_list or input_name in input_list):
                 return expr
@@ -336,9 +293,9 @@ class PartitioningPass:
 
 
         
-<<<<<<< Updated upstream
-    def traverse(self, expr, output_hash, input_list, layout, 
-                 output_shape, path):
+
+    def traverse(self,expr, path, output_hash, input_list, layout, output_shape, kernel_name,output_names,input_names, target ):
+        
         """
         Traverse through Relay expression to find input and output expressions
         and recreate expression
@@ -356,33 +313,19 @@ class PartitioningPass:
         path: str
             the path to the quantization and compilation files
         """
-        if (hash(expr) == output_hash):
-            for node in expr.args:
-                input_node = self.recurse(node,input_list)
-
-                if(input_node is not None):
-                    if layout == 'NHWC':
-                        output_shape = (1,output_shape[2],output_shape[3],output_shape[1])
-                    else: #DEFAULT CASE IS ASSUMED TO BE 'NCHW'
-                        output_shape = (1,output_shape[1],output_shape[2],output_shape[3])   
-
-                    op = relay.nn.accel([input_node],layout=layout,output_shape=output_shape)
-=======
-    def traverse(self,expr, path, output_hash, input_list, output_layout, output_shape, kernel_name,output_names,input_names, platform ):
-
         #assert (isinstance(expr, tvm.relay.expr.Call))
         if (hash(expr) == output_hash):
             for node in expr.args:
                 input_node = self.recurse(node,input_list)
                 if(input_node is not None):
 
-                    if platform == 'xdnn' and output_layout == 'NHWC':
+                    if target == 'xdnn' and layout == 'NHWC':
                             output_shape = (1,
                                             output_shape[2],
                                             output_shape[3],
                                             output_shape[1])
                             
-                    elif platform == 'dpu'  and output_layout == 'NCHW':
+                    elif target == 'dpu'  and layout == 'NCHW':
                         output_shape = (1,
                                         output_shape[3],
                                         output_shape[1],
@@ -395,11 +338,10 @@ class PartitioningPass:
 
                     op = relay.nn.accel([input_node],
                                         output_shape = output_shape,
-                                        layout       = output_layout,
+                                        layout       = layout,
                                         input_name   = input_names,
                                         output_name  = output_names,
                                         kernel_name  = kernel_name )
->>>>>>> Stashed changes
                 
                     return op
                 
@@ -412,12 +354,8 @@ class PartitioningPass:
 
             elif (isinstance(expr, tvm.relay.expr.Call)):
                 for node in expr.args:
-<<<<<<< Updated upstream
-                    output_node = self.traverse(node, output_hash, input_list, layout, 
-                        output_shape, path)
-=======
-                    output_node = self.traverse(node, path, output_hash,input_list, output_layout, output_shape, kernel_name, output_names, input_names, platform)
->>>>>>> Stashed changes
+
+                    output_node = self.traverse(node, path, output_hash,input_list, layout, output_shape, kernel_name, output_names, input_names, target)
                     if (output_node is not None):
                         break
                 # Case where the output node is not the chosen branch of the expression
@@ -425,20 +363,12 @@ class PartitioningPass:
                     return output_node
                 
             elif(isinstance(expr,tvm.relay.expr.TupleGetItem)):
-<<<<<<< Updated upstream
-                return self.traverse(expr.tuple_value, output_hash, input_list, layout,
-                    output_shape, path, model_name)
-        
-            elif(isinstance(expr,tvm.relay.expr.Tuple)):
-                return None
-            
-=======
-                return self.traverse(expr.tuple_value, path, output_hash,input_list,output_layout,output_shape, kernel_name, output_names, input_names, platform)
+
+                return self.traverse(expr.tuple_value, path, output_hash,input_list,layout,output_shape, kernel_name, output_names, input_names, target)
         
             elif(isinstance(expr,tvm.relay.expr.Tuple)):
                 return None
 
->>>>>>> Stashed changes
             elif(isinstance(expr,tvm.relay.expr.Var)):
                 return None
             else:
@@ -463,8 +393,6 @@ class PartitioningPass:
                 new_node = relay.Call(expr.op,children,expr.attrs,expr.type_args)
 
             else:
-                assert isinstance(expr, tvm.relay.expr.Call), \
-                    raise NotImplementedError("Condition to reconstruct node"
-                        " type %s has not been implemented", type(expr))
+                raise NotImplementedError("Condition to reconstruct node type %s has not been implemented", type(expr))
 
         return new_node
