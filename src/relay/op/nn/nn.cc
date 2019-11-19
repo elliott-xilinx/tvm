@@ -785,15 +785,19 @@ bool ACCELRel(const Array<Type>& types,
 
 
   Expr MakeACCEL(Expr data,
-		std::string output_layout,
-		std::string path,
-		std::string model_name,
-		Array<IndexExpr> output_shape) {
+		 Array<IndexExpr> output_shape,
+		 std::string      layout,
+		 std::string      input_name,
+		 std::string      output_name,
+		 std::string      kernel_name
+		 ) {
     auto attrs = make_node<ACCELAttrs>();
-    attrs->output_layout = std::move(output_layout);
-    attrs->path          = std::move(path         );
-    attrs->output_shape  = std::move(output_shape );
-    attrs->model_name    = std::move(model_name   );
+    
+    attrs->output_shape = std::move(output_shape);
+    attrs->layout	= std::move(layout      );
+    attrs->input_name	= std::move(input_name	);
+    attrs->output_name	= std::move(output_name );
+    attrs->kernel_name	= std::move(kernel_name );
     
   static const Op& op = Op::Get("nn.accel");
 
@@ -820,13 +824,7 @@ bool ACCELRel(const Array<Type>& types,
   .set_support_level(15)
   .add_type_rel("ACCEL",ACCELRel)
   .set_attr<TOpPattern>("TOpPattern",kInjective);
-  
-//.set_attr<FTVMCompute>("FTVMCompute", [](const Attrs& attrs,
-//                                         const Array<Tensor>& inputs,
-//                                         const Type& out_type,
-//                                         const Target& target) {
-//  return Array<Tensor>{ topi::relu(inputs[0], 0.0f) };
-//});
+ 
 
 }  // namespace relay
 }  // namespace tvm
